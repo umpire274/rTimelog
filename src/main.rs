@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveTime, Local};
+use chrono::{Local, NaiveDate, NaiveTime};
 use clap::{Parser, Subcommand};
 use rusqlite::{Connection, Result, params};
 
