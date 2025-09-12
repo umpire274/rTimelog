@@ -37,7 +37,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ steps.extract_version.outputs.version }}
           tag_name: ${{ steps.extract_version.outputs.version }}
@@ -76,25 +76,32 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binary into archive
+      # Linux/macOS packaging
+      - name: Package binary (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           mkdir -p dist pkg
           BIN_NAME="rTimelog"
+          BIN_FILE="target/${{ matrix.target }}/release/${BIN_NAME}"
+          PKG_NAME="${BIN_NAME}-${{ matrix.target }}.tar.gz"
+          cp "$BIN_FILE" pkg/
+          cp LICENSE README.md CHANGELOG.md pkg/
+          (cd pkg && tar czf "../dist/$PKG_NAME" .)
 
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            BIN_FILE="target/${{ matrix.target }}/release/${BIN_NAME}.exe"
-            PKG_NAME="${BIN_NAME}-${{ matrix.target }}.zip"
-            cp "$BIN_FILE" pkg/
-            cp LICENSE README.md CHANGELOG.md pkg/
-            (cd pkg && zip -r "../dist/$PKG_NAME" .)
-          else
-            BIN_FILE="target/${{ matrix.target }}/release/${BIN_NAME}"
-            PKG_NAME="${BIN_NAME}-${{ matrix.target }}.tar.gz"
-            cp "$BIN_FILE" pkg/
-            cp LICENSE README.md CHANGELOG.md pkg/
-            (cd pkg && tar czf "../dist/$PKG_NAME" .)
-          fi
+      # Windows packaging with PowerShell
+      - name: Package binary (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $BinName = "rTimelog.exe"
+          $TargetDir = "target/${{ matrix.target }}/release"
+          $PkgName = "rTimelog-${{ matrix.target }}.zip"
+          mkdir dist
+          mkdir pkg
+          Copy-Item "$TargetDir\$BinName" pkg/
+          Copy-Item LICENSE,README.md,CHANGELOG.md pkg/
+          Compress-Archive -Path pkg\* -DestinationPath "dist\$PkgName"
 
       - name: Generate SHA256 checksums
         shell: bash
@@ -123,7 +130,7 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.release.outputs.version }}
           files: dist/*
