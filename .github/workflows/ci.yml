@@ -2,7 +2,7 @@ name: Build, Package and Release
 
 on:
   workflow_run:
-    workflows: [ "Rust Build & Test" ] # Assicurati che il workflow di build/test abbia esattamente questo nome
+    workflows: [ "Rust Build & Test" ] # Deve corrispondere esattamente al nome del workflow di build/test
     types: [ completed ]
 
 permissions:
@@ -66,7 +66,13 @@ jobs:
           mkdir -p release_artifacts/${{ matrix.target }}
           cd target/${{ matrix.target }}/release
           mkdir -p rtimelog-${{ matrix.target }}
-          cp rtimelog rtimelog-${{ matrix.target }}/ 2>/dev/null || cp rtimelog.exe rtimelog-${{ matrix.target }}/
+          
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp rtimelog.exe rtimelog-${{ matrix.target }}/
+          else
+            cp rtimelog rtimelog-${{ matrix.target }}/
+          fi
+          
           cp $GITHUB_WORKSPACE/{README.md,LICENSE,CHANGELOG.md} rtimelog-${{ matrix.target }}/
           
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
