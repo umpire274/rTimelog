@@ -13,14 +13,13 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
   release:
     if: github.event_name == 'workflow_dispatch' || 
         (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'v'))
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.extract_version.outputs.version }}
 
     steps:
@@ -38,7 +37,6 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ steps.extract_version.outputs.version }}
@@ -78,16 +76,28 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package binary
+      - name: Package binary into archive
+        shell: bash
         run: |
-          mkdir -p dist
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/rTimelog.exe dist/rTimelog-${{ matrix.target }}.exe
+          mkdir -p dist pkg
+          BIN_NAME="rTimelog"
+
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            BIN_FILE="target/${{ matrix.target }}/release/${BIN_NAME}.exe"
+            PKG_NAME="${BIN_NAME}-${{ matrix.target }}.zip"
+            cp "$BIN_FILE" pkg/
+            cp LICENSE README.md CHANGELOG.md pkg/
+            (cd pkg && zip -r "../dist/$PKG_NAME" .)
           else
-            cp target/${{ matrix.target }}/release/rTimelog dist/rTimelog-${{ matrix.target }}
+            BIN_FILE="target/${{ matrix.target }}/release/${BIN_NAME}"
+            PKG_NAME="${BIN_NAME}-${{ matrix.target }}.tar.gz"
+            cp "$BIN_FILE" pkg/
+            cp LICENSE README.md CHANGELOG.md pkg/
+            (cd pkg && tar czf "../dist/$PKG_NAME" .)
           fi
 
       - name: Generate SHA256 checksums
+        shell: bash
         run: |
           cd dist
           for file in *; do
@@ -101,8 +111,9 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
 
-      - name: Sign binaries with GPG
+      - name: Sign archives with GPG
         if: env.GPG_PRIVATE_KEY != ''
+        shell: bash
         run: |
           cd dist
           for file in *; do
