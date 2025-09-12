@@ -103,13 +103,26 @@ jobs:
           Copy-Item LICENSE,README.md,CHANGELOG.md pkg/
           Compress-Archive -Path pkg\* -DestinationPath "dist\$PkgName"
 
-      - name: Generate SHA256 checksums
+      # Linux/macOS: SHA256
+      - name: Generate SHA256 checksums (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           cd dist
           for file in *; do
             shasum -a 256 "$file" > "$file.sha256"
           done
+
+      # Windows: SHA256
+      - name: Generate SHA256 checksums (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Set-Location dist
+          Get-ChildItem -File | ForEach-Object {
+            $hash = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($hash.Hash) *$($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
+          }
 
       - name: Import GPG key
         if: env.GPG_PRIVATE_KEY != ''
