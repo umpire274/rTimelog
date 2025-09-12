@@ -1,12 +1,12 @@
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveTime, Local};
 use clap::{Parser, Subcommand};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{Connection, Result, params};
 
-/// Applicazione CLI per tracciare orari di lavoro
+/// CLI application to track working hours with SQLite
 #[derive(Parser)]
-#[command(name = "worktime")]
+#[command(name = "rTimelog")]
 #[command(version = "0.1.0")]
-#[command(about = "Gestione orari di lavoro con SQLite", long_about = None)]
+#[command(about = "Track working hours and calculate surplus using SQLite", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -14,30 +14,28 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Inizializza il database
+    /// Initialize the database
     Init,
-
-    /// Aggiunge una sessione lavorativa
+    /// Add a new work session
     Add {
-        /// Data nel formato YYYY-MM-DD (default: oggi)
-        #[arg(default_value_t = chrono::Local::now().format("%Y-%m-%d").to_string())]
+        /// Date (YYYY-MM-DD, default: today)
+        #[arg(default_value_t = Local::now().format("%Y-%m-%d").to_string())]
         date: String,
-        /// Ora di ingresso (HH:MM)
+        /// Start time (HH:MM)
         start: String,
-        /// Durata pausa pranzo (in minuti)
+        /// Lunch break duration (minutes)
         lunch: u32,
-        /// Ora di uscita effettiva (HH:MM)
+        /// End time (HH:MM)
         end: String,
     },
-
-    /// Mostra tutte le sessioni salvate
+    /// List all work sessions
     List,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Connessione al DB (file locale)
+    // DB connection (file local)
     let conn = Connection::open("worktime.db")?;
 
     match cli.command {
@@ -52,28 +50,31 @@ fn main() -> Result<()> {
                 )",
                 [],
             )?;
-            println!("Database inizializzato.");
+            println!("✅ Database initialized.");
         }
 
-        Commands::Add { date, start, lunch, end } => {
-            // Validazione basilare (potresti renderla più robusta)
-            let _ = NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-                .expect("Formato data non valido (usa YYYY-MM-DD)");
-            let _ = NaiveTime::parse_from_str(&start, "%H:%M")
-                .expect("Formato ora ingresso non valido (usa HH:MM)");
-            let _ = NaiveTime::parse_from_str(&end, "%H:%M")
-                .expect("Formato ora uscita non valido (usa HH:MM)");
+        Commands::Add {
+            date,
+            start,
+            lunch,
+            end,
+        } => {
+            // Basic input validation
+            NaiveDate::parse_from_str(&date, "%Y-%m-%d").expect("Invalid date format (YYYY-MM-DD)");
+            NaiveTime::parse_from_str(&start, "%H:%M").expect("Invalid start time format (HH:MM)");
+            NaiveTime::parse_from_str(&end, "%H:%M").expect("Invalid end time format (HH:MM)");
 
             conn.execute(
                 "INSERT INTO work_sessions (date, start_time, lunch_break, end_time)
                  VALUES (?1, ?2, ?3, ?4)",
                 params![date, start, lunch, end],
             )?;
-            println!("Sessione salvata con successo!");
+            println!("💾 Work session saved!");
         }
 
         Commands::List => {
-            let mut stmt = conn.prepare("SELECT id, date, start_time, lunch_break, end_time FROM work_sessions")?;
+            let mut stmt = conn
+                .prepare("SELECT id, date, start_time, lunch_break, end_time FROM work_sessions")?;
             let sessions = stmt.query_map([], |row| {
                 Ok((
                     row.get::<_, i32>(0)?,
@@ -84,7 +85,7 @@ fn main() -> Result<()> {
                 ))
             })?;
 
-            println!("📅 Elenco sessioni:");
+            println!("📅 Saved sessions:");
             for session in sessions {
                 let (id, date, start, lunch, end) = session?;
                 println!("{id}: {date} | Inizio: {start}, Pausa: {lunch} min, Uscita: {end}");
