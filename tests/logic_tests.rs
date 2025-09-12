@@ -1,5 +1,5 @@
 use chrono::{NaiveTime, Duration};
-use rTimelog::logic; // Assumes you declare `pub mod logic;` in lib.rs or main.rs
+use r_timelog::logic; // Assumes you declare `pub mod logic;` in lib.rs or main.rs
 
 #[test]
 fn test_expected_exit_with_full_lunch() {
