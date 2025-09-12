@@ -72,7 +72,7 @@ fn main() -> rusqlite::Result<()> {
                     s.id,
                     s.date,
                     s.start,
-                    s.lunch,
+                    format!("{:02}", s.lunch),
                     s.end,
                     expected.format("%H:%M"),
                     surplus.num_minutes()
