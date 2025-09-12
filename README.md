@@ -1,7 +1,7 @@
 # rTimelog
 
 [![Crates.io](https://img.shields.io/crates/v/rTimelog.svg)](https://crates.io/crates/rTimelog)
-[![Build](https://github.com/umpire274/rTimelog/actions/workflows/rust.yml/badge.svg)](https://github.com/umpire274/rTimelog/actions)
+[![Build](https://github.com/umpire274/rTimelog/actions/workflows/ci.yml/badge.svg)](https://github.com/umpire274/rTimelog/actions)
 
 `rTimelog` is a simple and cross-platform **command-line tool** written in Rust that helps you track your working hours, lunch breaks, and calculate expected exit times and surplus work time.
 
