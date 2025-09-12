@@ -19,7 +19,8 @@ enum Commands {
 
     /// Aggiunge una sessione lavorativa
     Add {
-        /// Data nel formato YYYY-MM-DD
+        /// Data nel formato YYYY-MM-DD (default: oggi)
+        #[arg(default_value_t = chrono::Local::now().format("%Y-%m-%d").to_string())]
         date: String,
         /// Ora di ingresso (HH:MM)
         start: String,
