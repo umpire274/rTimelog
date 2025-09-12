@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+        os: [ ubuntu-latest, windows-latest, macos-13, macos-14 ]
 
     steps:
       - name: Checkout repository
@@ -48,3 +48,17 @@ jobs:
 
       - name: Run rustfmt (format check)
         run: cargo fmt -- --check
+
+      - name: Install cargo-tarpaulin
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo install cargo-tarpaulin
+
+      - name: Run coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo tarpaulin --out Xml --output-dir .
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: cobertura.xml
