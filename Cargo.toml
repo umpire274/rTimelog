@@ -1,6 +1,6 @@
 [package]
-name = "rTimelog"
-version = "0.1.0"
+name = "r_timelog"
+version = "0.1.1"
 edition = "2024"
 authors = ["Umpire274 <umpire274@gmail.com>"]
 description = "A simple cross-platform CLI tool to track working hours, lunch breaks, and calculate surplus time"
@@ -22,3 +22,7 @@ include = [
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 chrono = "0.4.42"
 clap = { version = "4.5.47", features = ["derive"] }
+
+[[bin]]
+name = "rTimelog"
+path = "src/main.rs"
