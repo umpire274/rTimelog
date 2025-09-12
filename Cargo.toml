@@ -2,8 +2,23 @@
 name = "rTimelog"
 version = "0.1.0"
 edition = "2024"
+authors = ["Umpire274 <umpire274@gmail.com>"]
+description = "A simple cross-platform CLI tool to track working hours, lunch breaks, and calculate surplus time"
+homepage = "https://github.com/umpire274/rTimelog"
+repository = "https://github.com/umpire274/rTimelog"
+license = "MIT"
+readme = "README.md"
+keywords = ["timelog", "work-tracking", "cli", "productivity", "sqlite"]
+categories = ["command-line-utilities", "date-and-time", "database"]
+include = [
+    "src/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+]
 
 [dependencies]
 rusqlite = { version = "0.37.0", features = ["bundled"] }
-chrono = "0.4.42"        # per data e orari
-clap = { version = "4.5.47", features = ["derive"] }  # per CLI
+chrono = "0.4.42"
+clap = { version = "4.5.47", features = ["derive"] }
