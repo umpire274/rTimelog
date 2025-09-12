@@ -74,7 +74,7 @@ fn main() -> rusqlite::Result<()> {
                 } else if surplus_minutes > 0 {
                     "\x1b[32m" // green
                 } else {
-                    "\x1b[0m"  // default (no color)
+                    "\x1b[0m" // default (no color)
                 };
 
                 println!(
