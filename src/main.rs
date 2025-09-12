@@ -1,7 +1,7 @@
 use r_timelog::db;
 use r_timelog::logic;
 
-use chrono::{Local, NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveTime};
 use clap::{Parser, Subcommand};
 use rusqlite::Connection;
 
@@ -21,14 +21,20 @@ enum Commands {
     Init,
     /// Add a new work session
     Add {
-        /// Date (YYYY-MM-DD, default: today)
-        #[arg(default_value_t = Local::now().format("%Y-%m-%d").to_string())]
+        /// Date of the session (YYYY-MM-DD)
+        #[arg(index = 1)]
         date: String,
+
         /// Start time (HH:MM)
+        #[arg(index = 2)]
         start: String,
-        /// Lunch break duration (minutes)
+
+        /// Lunch break in minutes (30–90)
+        #[arg(index = 3)]
         lunch: u32,
+
         /// End time (HH:MM)
+        #[arg(index = 4)]
         end: String,
     },
     /// List all work sessions
