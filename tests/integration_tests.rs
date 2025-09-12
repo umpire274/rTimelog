@@ -1,5 +1,5 @@
+use chrono::{Duration, NaiveTime};
 use rusqlite::Connection;
-use chrono::{NaiveTime, Duration};
 
 // Import your modules
 use r_timelog::db;
@@ -19,7 +19,10 @@ fn test_db_and_logic_integration_min_lunch() {
 
     // Expected exit: 17:30 (09:00 + 8h + 30m)
     let expected = logic::calculate_expected_exit(&s.start, s.lunch);
-    assert_eq!(expected, NaiveTime::parse_from_str("17:30", "%H:%M").unwrap());
+    assert_eq!(
+        expected,
+        NaiveTime::parse_from_str("17:30", "%H:%M").unwrap()
+    );
 
     // Surplus: 17:30 - 17:30 = 0
     let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
@@ -40,7 +43,10 @@ fn test_db_and_logic_integration_extra_lunch() {
 
     // Expected exit: 17:45 (09:00 + 8h + 30m + 15m extra)
     let expected = logic::calculate_expected_exit(&s.start, s.lunch);
-    assert_eq!(expected, NaiveTime::parse_from_str("17:45", "%H:%M").unwrap());
+    assert_eq!(
+        expected,
+        NaiveTime::parse_from_str("17:45", "%H:%M").unwrap()
+    );
 
     // Surplus: 18:00 - 17:45 = +15 min
     let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
@@ -61,7 +67,10 @@ fn test_db_and_logic_integration_long_lunch_capped() {
 
     // Expected exit: 18:30 (09:00 + 8h + 30m + 60m extra capped)
     let expected = logic::calculate_expected_exit(&s.start, s.lunch);
-    assert_eq!(expected, NaiveTime::parse_from_str("18:30", "%H:%M").unwrap());
+    assert_eq!(
+        expected,
+        NaiveTime::parse_from_str("18:30", "%H:%M").unwrap()
+    );
 
     // Surplus: 18:30 - 18:30 = 0
     let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
