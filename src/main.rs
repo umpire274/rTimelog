@@ -84,7 +84,7 @@ fn main() -> rusqlite::Result<()> {
                 };
 
                 println!(
-                    "{:>3}: {} | Start {} | Lunch {:>2} min | End {} | Expected {} | Surplus {}{:>4} \x1b[0mmin",
+                    "{:>3}: {} | Start {} | Lunch {:>2} min | End {} | Expected {} | Surplus {}{:>+4} \x1b[0mmin",
                     s.id,
                     s.date,
                     s.start,
