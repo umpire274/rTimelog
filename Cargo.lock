@@ -317,7 +317,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rTimelog"
+name = "r_timelog"
 version = "0.1.1"
 dependencies = [
  "chrono",
