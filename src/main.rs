@@ -8,7 +8,7 @@ use rusqlite::Connection;
 /// CLI application to track working hours with SQLite
 #[derive(Parser)]
 #[command(name = "rTimelog")]
-#[command(version = "0.1.1")]
+#[command(version = "0.1.2")]
 #[command(about = "Track working hours and calculate surplus using SQLite", long_about = None)]
 struct Cli {
     #[command(subcommand)]
