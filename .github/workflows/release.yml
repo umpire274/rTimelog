@@ -124,10 +124,26 @@ jobs:
             "$($hash.Hash) *$($_.Name)" | Out-File "$($_.FullName).sha256" -Encoding ASCII
           }
 
-      - name: Import GPG key
-        if: env.GPG_PRIVATE_KEY != ''
+      # Linux/macOS: import GPG
+      - name: Import GPG key (Linux/macOS)
+        if: env.GPG_PRIVATE_KEY != '' && matrix.os != 'windows-latest'
+        shell: bash
         run: |
           echo "$GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          gpg --list-secret-keys --keyid-format=long
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      # Windows: import GPG
+      - name: Import GPG key (Windows)
+        if: env.GPG_PRIVATE_KEY != '' && matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:GPG_PRIVATE_KEY)
+          Set-Content -Path private.key -Value $bytes -Encoding Byte
+          gpg --batch --import private.key
+          gpg --list-secret-keys --keyid-format=long
+          Remove-Item private.key
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
 
