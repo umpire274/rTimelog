@@ -5,10 +5,16 @@ on:
     types: [closed]
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., v0.1.2)"
+        required: true
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'v')
+    if: github.event_name == 'workflow_dispatch' || 
+        (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'v'))
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -18,10 +24,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract version from branch name
+      - name: Extract version
         id: extract_version
         run: |
-          VERSION="${GITHUB_HEAD_REF}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_HEAD_REF}"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
