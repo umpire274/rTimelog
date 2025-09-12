@@ -41,12 +41,9 @@ pub fn add_session(
 }
 
 /// Retrieve all stored sessions
-pub fn list_sessions(conn: &Connection) -> Result<Vec<WorkSession>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, date, start_time, lunch_break, end_time FROM work_sessions ORDER BY date ASC",
-    )?;
-
-    let sessions = stmt.query_map([], |row| {
+/// Retrieve all stored sessions, optionally filtered by month (01-12)
+pub fn list_sessions(conn: &Connection, period: Option<&str>) -> Result<Vec<WorkSession>> {
+    let mapper = |row: &rusqlite::Row| {
         Ok(WorkSession {
             id: row.get(0)?,
             date: row.get(1)?,
@@ -54,12 +51,45 @@ pub fn list_sessions(conn: &Connection) -> Result<Vec<WorkSession>> {
             lunch: row.get(3)?,
             end: row.get(4)?,
         })
-    })?;
+    };
 
-    let mut result = Vec::new();
-    for session in sessions {
-        result.push(session?);
+    let mut stmt;
+    let rows;
+
+    if let Some(p) = period {
+        if p.len() == 4 {
+            // Filter only by year
+            stmt = conn.prepare(
+                "SELECT id, date, start_time, lunch_break, end_time
+                 FROM work_sessions
+                 WHERE strftime('%Y', date) = ?1
+                 ORDER BY date ASC",
+            )?;
+            rows = stmt.query_map([p], mapper)?;
+        } else if p.len() == 7 {
+            // Filter by year + month
+            stmt = conn.prepare(
+                "SELECT id, date, start_time, lunch_break, end_time
+                 FROM work_sessions
+                 WHERE strftime('%Y-%m', date) = ?1
+                 ORDER BY date ASC",
+            )?;
+            rows = stmt.query_map([p], mapper)?;
+        } else {
+            return Err(rusqlite::Error::InvalidQuery); // o un Result custom con messaggio
+        }
+    } else {
+        stmt = conn.prepare(
+            "SELECT id, date, start_time, lunch_break, end_time
+             FROM work_sessions
+             ORDER BY date ASC",
+        )?;
+        rows = stmt.query_map([], mapper)?;
     }
 
+    let mut result = Vec::new();
+    for r in rows {
+        result.push(r?);
+    }
     Ok(result)
 }

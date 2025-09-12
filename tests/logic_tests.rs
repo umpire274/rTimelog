@@ -1,5 +1,6 @@
 use chrono::{Duration, NaiveTime};
 use r_timelog::logic;
+use r_timelog::logic::month_name;
 
 #[test]
 fn test_expected_exit_with_min_lunch() {
@@ -61,4 +62,27 @@ fn test_surplus_overtime() {
 fn test_surplus_leave_early() {
     let surplus = logic::calculate_surplus("09:00", 90, "18:00");
     assert_eq!(surplus, Duration::minutes(-30));
+}
+
+#[test]
+fn test_month_name_valid() {
+    assert_eq!(month_name("01"), "January");
+    assert_eq!(month_name("02"), "February");
+    assert_eq!(month_name("03"), "March");
+    assert_eq!(month_name("04"), "April");
+    assert_eq!(month_name("05"), "May");
+    assert_eq!(month_name("06"), "June");
+    assert_eq!(month_name("07"), "July");
+    assert_eq!(month_name("08"), "August");
+    assert_eq!(month_name("09"), "September");
+    assert_eq!(month_name("10"), "October");
+    assert_eq!(month_name("11"), "November");
+    assert_eq!(month_name("12"), "December");
+}
+
+#[test]
+fn test_month_name_invalid() {
+    assert_eq!(month_name("00"), "Unknown");
+    assert_eq!(month_name("13"), "Unknown");
+    assert_eq!(month_name("xx"), "Unknown");
 }

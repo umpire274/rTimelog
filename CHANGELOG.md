@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.1.2] - 2025-09-12
+### Added
+- Added functionality to search records by year (`yyyy`) or year-month (`yyyy-mm`) using option `--period`.
+- Added explicit `+` sign for positive surplus minutes.
+
+### Changed
+- Updated integration tests to cover new functionalities.
+
 ## [0.1.1] - 2025-09-12
 ### Added
 - New workflow: `release.yml` for automated releases
