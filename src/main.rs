@@ -1,5 +1,5 @@
-mod db;
-mod logic;
+use rTimelog::logic;
+use rTimelog::db;
 
 use chrono::{Local, NaiveDate, NaiveTime};
 use clap::{Parser, Subcommand};
