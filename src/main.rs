@@ -66,17 +66,27 @@ fn main() -> rusqlite::Result<()> {
             for s in sessions {
                 let expected = logic::calculate_expected_exit(&s.start, s.lunch);
                 let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
-                let lminute = format!("{:02}", s.lunch);
+                let surplus_minutes = surplus.num_minutes();
+
+                // Pick color depending on surplus
+                let color_code = if surplus_minutes < 0 {
+                    "\x1b[31m" // red
+                } else if surplus_minutes > 0 {
+                    "\x1b[32m" // green
+                } else {
+                    "\x1b[0m"  // default (no color)
+                };
 
                 println!(
-                    "{:>3}: {} | Start {} | Lunch {} min | End {} | Expected {} | Surplus {} min",
+                    "{:>3}: {} | Start {} | Lunch {:>2} min | End {} | Expected {} | Surplus {}{:>4} \x1b[0mmin",
                     s.id,
                     s.date,
                     s.start,
-                    lminute,
+                    s.lunch,
                     s.end,
                     expected.format("%H:%M"),
-                    surplus.num_minutes()
+                    color_code,
+                    surplus_minutes
                 );
             }
         }
