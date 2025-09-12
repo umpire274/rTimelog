@@ -1,58 +1,60 @@
 use r_timelog::db;
-use r_timelog::logic;
 use rusqlite::Connection;
 
 #[test]
-fn test_surplus_zero_output() {
+fn test_list_sessions_all() {
     let conn = Connection::open_in_memory().unwrap();
     db::init_db(&conn).unwrap();
 
-    db::add_session(&conn, "2025-09-12", "09:00", 30, "17:30").unwrap();
-    let sessions = db::list_sessions(&conn).unwrap();
-    let s = &sessions[0];
+    db::add_session(&conn, "2025-08-31", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2025-09-15", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2024-09-10", "09:00", 30, "17:00").unwrap();
 
-    let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
-    let surplus_minutes = surplus.num_minutes();
-
-    // Zero should display as "0"
-    let formatted = if surplus_minutes == 0 {
-        "0".to_string()
-    } else {
-        format!("{:+}", surplus_minutes)
-    };
-    assert_eq!(formatted, "0");
+    let sessions = db::list_sessions(&conn, None).unwrap();
+    assert_eq!(sessions.len(), 3); // tutti
 }
 
 #[test]
-fn test_surplus_positive_output() {
+fn test_list_sessions_filter_year() {
     let conn = Connection::open_in_memory().unwrap();
     db::init_db(&conn).unwrap();
 
-    db::add_session(&conn, "2025-09-13", "09:00", 60, "18:30").unwrap();
-    let sessions = db::list_sessions(&conn).unwrap();
-    let s = &sessions[0];
+    db::add_session(&conn, "2025-01-10", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2025-05-20", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2024-12-31", "09:00", 30, "17:00").unwrap();
 
-    let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
-    let surplus_minutes = surplus.num_minutes();
-
-    // Positive should display with a "+"
-    let formatted = format!("{:+}", surplus_minutes);
-    assert_eq!(formatted, "+30");
+    let sessions_2025 = db::list_sessions(&conn, Some("2025")).unwrap();
+    assert_eq!(sessions_2025.len(), 2);
+    for s in sessions_2025 {
+        assert!(s.date.starts_with("2025"));
+    }
 }
 
 #[test]
-fn test_surplus_negative_output() {
+fn test_list_sessions_filter_year_month() {
     let conn = Connection::open_in_memory().unwrap();
     db::init_db(&conn).unwrap();
 
-    db::add_session(&conn, "2025-09-14", "09:00", 60, "17:30").unwrap();
-    let sessions = db::list_sessions(&conn).unwrap();
-    let s = &sessions[0];
+    db::add_session(&conn, "2025-09-01", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2025-09-15", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2025-10-01", "09:00", 30, "17:00").unwrap();
+    db::add_session(&conn, "2024-09-01", "09:00", 30, "17:00").unwrap();
 
-    let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
-    let surplus_minutes = surplus.num_minutes();
+    let sessions_sep_2025 = db::list_sessions(&conn, Some("2025-09")).unwrap();
+    assert_eq!(sessions_sep_2025.len(), 2);
 
-    // Negative should display with "-"
-    let formatted = format!("{:+}", surplus_minutes);
-    assert_eq!(formatted, "-30");
+    for s in sessions_sep_2025 {
+        assert!(s.date.starts_with("2025-09"));
+    }
+}
+
+#[test]
+fn test_list_sessions_invalid_period() {
+    let conn = Connection::open_in_memory().unwrap();
+    db::init_db(&conn).unwrap();
+
+    db::add_session(&conn, "2025-09-01", "09:00", 30, "17:00").unwrap();
+
+    let result = db::list_sessions(&conn, Some("2025-9")); // formato errato
+    assert!(result.is_err());
 }
