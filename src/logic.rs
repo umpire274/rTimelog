@@ -13,13 +13,7 @@ pub fn calculate_expected_exit(start: &str, lunch: i32) -> NaiveTime {
     let work_duration = Duration::hours(8);
 
     // Clamp lunch to [30, 90]
-    let lunch_clamped = if lunch < 30 {
-        30
-    } else if lunch > 90 {
-        90
-    } else {
-        lunch
-    };
+    let lunch_clamped = lunch.clamp(30, 90);
 
     // Always count 30 min, add extra if >30
     let base_lunch = Duration::minutes(30);
