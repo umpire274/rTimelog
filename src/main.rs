@@ -66,13 +66,14 @@ fn main() -> rusqlite::Result<()> {
             for s in sessions {
                 let expected = logic::calculate_expected_exit(&s.start, s.lunch);
                 let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end);
+                let lminute = format!("{:02}", s.lunch);
 
                 println!(
                     "{:>3}: {} | Start {} | Lunch {} min | End {} | Expected {} | Surplus {} min",
                     s.id,
                     s.date,
                     s.start,
-                    format!("{:02}", s.lunch),
+                    lminute,
                     s.end,
                     expected.format("%H:%M"),
                     surplus.num_minutes()
