@@ -1,6 +1,6 @@
 [package]
 name = "r_timelog"
-version = "0.1.2"
+version = "0.1.5"
 edition = "2024"
 authors = ["Umpire274 <umpire274@gmail.com>"]
 description = "A simple cross-platform CLI tool to track working hours, lunch breaks, and calculate surplus time"
