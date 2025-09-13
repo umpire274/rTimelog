@@ -47,3 +47,21 @@ pub fn calculate_surplus(start: &str, lunch: i32, end: &str) -> Duration {
 
     actual - expected
 }
+
+/// Check if the work interval crosses the lunch window (12:30–14:30).
+pub fn crosses_lunch_window(start: &str, end: &str) -> bool {
+    let start_time = NaiveTime::parse_from_str(start, "%H:%M");
+    let end_time = NaiveTime::parse_from_str(end, "%H:%M");
+
+    if start_time.is_err() || end_time.is_err() {
+        return false;
+    }
+
+    let start_time = start_time.unwrap();
+    let end_time = end_time.unwrap();
+
+    let lunch_window_start = NaiveTime::parse_from_str("12:30", "%H:%M").unwrap();
+    let lunch_window_end = NaiveTime::parse_from_str("14:30", "%H:%M").unwrap();
+
+    start_time < lunch_window_end && end_time > lunch_window_start
+}

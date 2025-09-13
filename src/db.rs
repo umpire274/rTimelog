@@ -16,7 +16,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
             start_time TEXT NOT NULL,
-            lunch_break INTEGER NOT NULL,
+            lunch_break INTEGER NOT NULL DEFAULT 0,
             end_time TEXT NOT NULL
         )",
         [],
@@ -92,4 +92,49 @@ pub fn list_sessions(conn: &Connection, period: Option<&str>) -> Result<Vec<Work
         result.push(r?);
     }
     Ok(result)
+}
+
+pub fn upsert_start(conn: &Connection, date: &str, start: &str) -> Result<()> {
+    let rows = conn.execute(
+        "UPDATE work_sessions SET start_time = ?1 WHERE date = ?2",
+        (start, date),
+    )?;
+    if rows == 0 {
+        conn.execute(
+            "INSERT INTO work_sessions (date, start_time, lunch_break, end_time)
+             VALUES (?1, ?2, 0, '')",
+            (date, start),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn upsert_lunch(conn: &Connection, date: &str, lunch: i32) -> Result<()> {
+    let rows = conn.execute(
+        "UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2",
+        (lunch, date),
+    )?;
+    if rows == 0 {
+        conn.execute(
+            "INSERT INTO work_sessions (date, start_time, lunch_break, end_time)
+             VALUES (?1, '', ?2, '')",
+            (date, lunch),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
+    let rows = conn.execute(
+        "UPDATE work_sessions SET end_time = ?1 WHERE date = ?2",
+        (end, date),
+    )?;
+    if rows == 0 {
+        conn.execute(
+            "INSERT INTO work_sessions (date, start_time, lunch_break, end_time)
+             VALUES (?1, '', 0, ?2)",
+            (date, end),
+        )?;
+    }
+    Ok(())
 }
