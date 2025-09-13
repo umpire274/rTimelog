@@ -20,27 +20,28 @@ struct Cli {
 enum Commands {
     /// Add or update a work session
     Add {
-        /// The date (YYYY-MM-DD)
+        /// Date (YYYY-MM-DD)
         date: String,
 
-        /// Start time (HH:MM)
+        /// (Positional)Position: A=office, R=remote
+        pos_pos: Option<String>,
+        /// (Positional) Start time (HH:MM)
         start_pos: Option<String>,
-
-        /// Lunch break in minutes (30–90)
+        /// (Positional) Lunch minutes
         lunch_pos: Option<i32>,
-
-        /// End time (HH:MM) - optional positional arg
+        /// (Positional) End time (HH:MM)
         end_pos: Option<String>,
 
-        /// Start time (HH:MM) via option
+        /// (Option) Position: A=office, R=remote
+        #[arg(long = "pos")]
+        pos: Option<String>,
+        /// (Option) Start time (HH:MM)
         #[arg(long = "in")]
         start: Option<String>,
-
-        /// Lunch break in minutes via option
+        /// (Option) Lunch minutes
         #[arg(long = "lunch")]
         lunch: Option<i32>,
-
-        /// End time (HH:MM) via option
+        /// (Option) End time (HH:MM)
         #[arg(long = "out")]
         end: Option<String>,
     },
@@ -56,7 +57,7 @@ enum Commands {
 
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
-    let conn = Connection::open("worktime.db")?;
+    let conn = Connection::open("worktime.sqlite")?;
 
     println!();
 
@@ -68,27 +69,39 @@ fn main() -> rusqlite::Result<()> {
 
         Commands::Add {
             date,
+            pos_pos,
             start_pos,
             lunch_pos,
             end_pos,
+            pos,
             start,
             lunch,
             end,
         } => {
-            let conn = Connection::open("worktime.db")?;
-
-            // ✅ Data
+            // ✅ Validate date
             if NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
                 eprintln!("❌ Invalid date format: {} (expected YYYY-MM-DD)", date);
                 return Ok(());
             }
 
-            // Unifica posizionali e opzioni
+            // ✅ Merge positional and option values
+            let pos = pos.or(pos_pos);
             let start = start.or(start_pos);
             let lunch = lunch.or(lunch_pos);
             let end = end.or(end_pos);
 
-            // ⏰ Start
+            // ✅ Handle position
+            if let Some(p) = pos.as_ref() {
+                let p = p.trim().to_uppercase();
+                if p != "A" && p != "R" {
+                    eprintln!("❌ Invalid position: {} (use A=office or R=remote)", p);
+                    return Ok(());
+                }
+                db::upsert_position(&conn, &date, &p)?;
+                println!("✅ Position {} set for {}", p, date);
+            }
+
+            // ✅ Handle start time
             if let Some(s) = start.as_ref() {
                 if NaiveTime::parse_from_str(s, "%H:%M").is_err() {
                     eprintln!("❌ Invalid start time: {} (expected HH:MM)", s);
@@ -98,17 +111,20 @@ fn main() -> rusqlite::Result<()> {
                 println!("✅ Start time {} registered for {}", s, date);
             }
 
-            // 🍽 Lunch
+            // ✅ Handle lunch
             if let Some(l) = lunch {
-                if !(30..=90).contains(&l) {
-                    eprintln!("❌ Invalid lunch break: {} (must be 30–90 minutes)", l);
+                if !(0..=90).contains(&l) {
+                    eprintln!(
+                        "❌ Invalid lunch break: {} (must be between 0 and 90 minutes)",
+                        l
+                    );
                     return Ok(());
                 }
                 db::upsert_lunch(&conn, &date, l)?;
                 println!("✅ Lunch {} min registered for {}", l, date);
             }
 
-            // 🏁 End
+            // ✅ Handle end time
             if let Some(e) = end.as_ref() {
                 if NaiveTime::parse_from_str(e, "%H:%M").is_err() {
                     eprintln!("❌ Invalid end time: {} (expected HH:MM)", e);
@@ -118,16 +134,16 @@ fn main() -> rusqlite::Result<()> {
                 println!("✅ End time {} registered for {}", e, date);
             }
 
-            // 🚨 Nessun parametro
-            if start.is_none() && lunch.is_none() && end.is_none() {
-                eprintln!("⚠️ Please provide at least one of: start, lunch, end");
+            // ⚠️ Warn if no field provided
+            if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
+                eprintln!("⚠️ Please provide at least one of: position, start, lunch, end");
             }
 
             return Ok(());
         }
 
         Commands::List { period } => {
-            let conn = Connection::open("worktime.db")?;
+            let conn = Connection::open("worktime.sqlite")?;
             let sessions = db::list_sessions(&conn, period.as_deref())?;
 
             if let Some(p) = period {
@@ -150,19 +166,12 @@ fn main() -> rusqlite::Result<()> {
                 if has_start && has_end {
                     let start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
                     let end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
-
+                    let pos_char = s.position.chars().next().unwrap_or('A');
                     let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
 
-                    // pausa da usare nel calcolo
-                    let effective_lunch = if crosses_lunch {
-                        if s.lunch > 0 {
-                            s.lunch
-                        } else {
-                            30 // pausa minima automatica
-                        }
-                    } else {
-                        0
-                    };
+                    // Compute effective lunch
+                    let effective_lunch =
+                        logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char);
 
                     if crosses_lunch && effective_lunch > 0 {
                         // ✅ Caso completo con pausa (inserita o automatica)
@@ -185,9 +194,10 @@ fn main() -> rusqlite::Result<()> {
                         };
 
                         println!(
-                            "{:>3}: {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>3} min\x1b[0m",
+                            "{:>3}: {} | Position {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>3} min\x1b[0m",
                             s.id,
                             s.date,
+                            s.position,
                             s.start,
                             effective_lunch,
                             s.end,
@@ -199,9 +209,10 @@ fn main() -> rusqlite::Result<()> {
                         // ✅ Caso senza pausa (lavoro interamente fuori dalla finestra)
                         let duration = end_time - start_time;
                         println!(
-                            "{:>3}: {} | Start {} | \x1b[90mLunch   -\x1b[0m    | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
+                            "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch   -\x1b[0m    | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
                             s.id,
                             s.date,
+                            s.position,
                             s.start,
                             s.end,
                             duration.num_hours(),
@@ -211,9 +222,10 @@ fn main() -> rusqlite::Result<()> {
                 } else {
                     // ⚠️ informazioni incomplete
                     println!(
-                        "{:>3}: {} | Start {} | Lunch {} | End {}",
+                        "{:>3}: {} | Position {} | Start {} | Lunch {} | End {}",
                         s.id,
                         s.date,
+                        s.position,
                         if has_start { &s.start } else { "-" },
                         if s.lunch > 0 {
                             format!("{} min", s.lunch)

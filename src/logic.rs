@@ -48,20 +48,41 @@ pub fn calculate_surplus(start: &str, lunch: i32, end: &str) -> Duration {
     actual - expected
 }
 
-/// Check if the work interval crosses the lunch window (12:30–14:30).
+/// Return true if the interval [start, end] overlaps the lunch window 12:30–14:30.
 pub fn crosses_lunch_window(start: &str, end: &str) -> bool {
-    let start_time = NaiveTime::parse_from_str(start, "%H:%M");
-    let end_time = NaiveTime::parse_from_str(end, "%H:%M");
+    let start_time = match NaiveTime::parse_from_str(start, "%H:%M") {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let end_time = match NaiveTime::parse_from_str(end, "%H:%M") {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
 
-    if start_time.is_err() || end_time.is_err() {
-        return false;
+    let lunch_start = NaiveTime::parse_from_str("12:30", "%H:%M").unwrap();
+    let lunch_end = NaiveTime::parse_from_str("14:30", "%H:%M").unwrap();
+
+    start_time < lunch_end && end_time > lunch_start
+}
+
+/// Compute the effective lunch minutes based on position and work interval.
+///
+/// Rules:
+/// - `A` (office): if the interval overlaps 12:30–14:30, lunch is mandatory [30..90].
+///   If missing (0) it defaults to 30. Outside the window, lunch = 0.
+/// - `R` (remote): lunch is optional, 0..90 accepted, even if overlapping the window.
+pub fn effective_lunch_minutes(lunch: i32, start: &str, end: &str, position: char) -> i32 {
+    let crosses = crosses_lunch_window(start, end);
+    match position {
+        'A' => {
+            if crosses {
+                let l = lunch.clamp(0, 90);
+                if l < 30 { 30 } else { l }
+            } else {
+                0
+            }
+        }
+        'R' => lunch.clamp(0, 90),
+        _ => lunch.clamp(0, 90),
     }
-
-    let start_time = start_time.unwrap();
-    let end_time = end_time.unwrap();
-
-    let lunch_window_start = NaiveTime::parse_from_str("12:30", "%H:%M").unwrap();
-    let lunch_window_end = NaiveTime::parse_from_str("14:30", "%H:%M").unwrap();
-
-    start_time < lunch_window_end && end_time > lunch_window_start
 }
