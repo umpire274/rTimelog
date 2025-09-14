@@ -8,10 +8,17 @@ use rusqlite::Connection;
 
 /// CLI application to track working hours with SQLite
 #[derive(Parser)]
-#[command(name = "rTimelog")]
-#[command(version = "0.1.5")]
-#[command(about = "Track working hours and calculate surplus using SQLite", long_about = None)]
+#[command(
+    name = "rtimelog",
+    version = env!("CARGO_PKG_VERSION"),
+    about = "A simple time logging CLI in Rust: track working hours and calculate surplus using SQLite",
+    long_about = None
+)]
 struct Cli {
+    /// Override database path (useful for tests or custom DB)
+    #[arg(global = true, long = "db")]
+    db: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -53,29 +60,60 @@ enum Commands {
     },
 
     /// Initialize the database and configuration
-    Init {
-        /// Optional custom database name (without path)
-        #[arg(long = "name")]
-        name: Option<String>,
-    },
+    Init,
 }
 
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
+    // Choose DB path: --db overrides config
+    let db_path = if let Some(custom) = &cli.db {
+        let custom_path = std::path::Path::new(custom);
+        if custom_path.is_absolute() {
+            custom.to_string()
+        } else {
+            Config::config_dir()
+                .join(custom_path)
+                .to_string_lossy()
+                .to_string()
+        }
+    } else {
+        Config::load().database
+    };
 
     println!();
 
     match cli.command {
-        Commands::Init { name } => {
-            // Create config + db (with optional custom name)
-            Config::init_all(name).unwrap();
+        Commands::Init => {
+            if let Some(custom) = &cli.db {
+                let custom_path = std::path::Path::new(custom);
+                if custom_path.is_absolute() {
+                    // percorso assoluto → gestito direttamente
+                    if let Some(parent) = custom_path.parent() {
+                        std::fs::create_dir_all(parent).unwrap();
+                    }
+                    if !custom_path.exists() {
+                        std::fs::File::create(custom_path).unwrap();
+                    }
+                    let conn = Connection::open(custom_path)?;
+                    db::init_db(&conn)?;
+                    println!("✅ Database initialized at {}", custom_path.display());
+                } else {
+                    // solo nome file → lascia a Config::init_all la gestione
+                    Config::init_all(Some(custom.clone())).unwrap();
+                    let config = Config::load();
+                    let conn = Connection::open(&config.database)?;
+                    db::init_db(&conn)?;
+                    println!("✅ Database initialized at {}", config.database);
+                }
+            } else {
+                // nessun parametro → default
+                Config::init_all(None).unwrap();
+                let config = Config::load();
+                let conn = Connection::open(&config.database)?;
+                db::init_db(&conn)?;
+                println!("✅ Database initialized at {}", config.database);
+            }
 
-            // Load config
-            let config = Config::load();
-            let conn = Connection::open(&config.database)?;
-            db::init_db(&conn)?;
-
-            println!("✅ Database initialized and configuration file ready");
             Ok(())
         }
 
@@ -90,8 +128,7 @@ fn main() -> rusqlite::Result<()> {
             lunch,
             end,
         } => {
-            let config = Config::load();
-            let conn = Connection::open(&config.database)?;
+            let conn = Connection::open(&db_path)?;
 
             // ✅ Validate date
             if NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
@@ -158,8 +195,8 @@ fn main() -> rusqlite::Result<()> {
         }
 
         Commands::List { period } => {
-            let config = Config::load();
-            let conn = Connection::open(&config.database)?;
+            println!("List: db used = {}", db_path);
+            let conn = Connection::open(&db_path)?;
             let sessions = db::list_sessions(&conn, period.as_deref())?;
 
             if sessions.is_empty() {

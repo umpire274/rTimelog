@@ -69,7 +69,7 @@ impl Config {
 
         // Create empty DB file if not exists
         if !db_path.exists() {
-            std::fs::File::create(&db_path)?;
+            fs::File::create(&db_path)?;
         }
 
         println!("✅ Config file: {:?}", Self::config_file());
