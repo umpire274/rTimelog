@@ -162,6 +162,11 @@ fn main() -> rusqlite::Result<()> {
             let conn = Connection::open(&config.database)?;
             let sessions = db::list_sessions(&conn, period.as_deref())?;
 
+            if sessions.is_empty() {
+                println!("⚠️  No recorded sessions found");
+                return Ok(());
+            }
+
             if let Some(p) = period {
                 if p.len() == 4 {
                     println!("📅 Saved sessions for year {}:", p);
