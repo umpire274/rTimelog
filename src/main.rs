@@ -1,6 +1,5 @@
-use r_timelog::config;
-use r_timelog::db;
 use r_timelog::logic;
+use r_timelog::{config::Config, db};
 
 use chrono::{NaiveDate, NaiveTime};
 use clap::{Parser, Subcommand};
@@ -63,17 +62,16 @@ enum Commands {
 
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
-    let conn = Connection::open("worktime.sqlite")?;
 
     println!();
 
     match cli.command {
         Commands::Init { name } => {
             // Create config + db (with optional custom name)
-            config::Config::init_all(name).unwrap();
+            Config::init_all(name).unwrap();
 
             // Load config
-            let config = config::Config::load();
+            let config = Config::load();
             let conn = Connection::open(&config.database)?;
             db::init_db(&conn)?;
 
@@ -92,6 +90,9 @@ fn main() -> rusqlite::Result<()> {
             lunch,
             end,
         } => {
+            let config = Config::load();
+            let conn = Connection::open(&config.database)?;
+
             // ✅ Validate date
             if NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
                 eprintln!("❌ Invalid date format: {} (expected YYYY-MM-DD)", date);
@@ -157,7 +158,8 @@ fn main() -> rusqlite::Result<()> {
         }
 
         Commands::List { period } => {
-            let conn = Connection::open("worktime.sqlite")?;
+            let config = Config::load();
+            let conn = Connection::open(&config.database)?;
             let sessions = db::list_sessions(&conn, period.as_deref())?;
 
             if let Some(p) = period {
