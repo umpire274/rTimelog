@@ -1,3 +1,4 @@
+use r_timelog::config;
 use r_timelog::db;
 use r_timelog::logic;
 
@@ -52,7 +53,12 @@ enum Commands {
         period: Option<String>,
     },
 
-    Init,
+    /// Initialize the database and configuration
+    Init {
+        /// Optional custom database name (without path)
+        #[arg(long = "name")]
+        name: Option<String>,
+    },
 }
 
 fn main() -> rusqlite::Result<()> {
@@ -62,9 +68,17 @@ fn main() -> rusqlite::Result<()> {
     println!();
 
     match cli.command {
-        Commands::Init => {
+        Commands::Init { name } => {
+            // Create config + db (with optional custom name)
+            config::Config::init_all(name).unwrap();
+
+            // Load config
+            let config = config::Config::load();
+            let conn = Connection::open(&config.database)?;
             db::init_db(&conn)?;
-            println!("✅ Database initialized.");
+
+            println!("✅ Database initialized and configuration file ready");
+            Ok(())
         }
 
         Commands::Add {
@@ -139,7 +153,7 @@ fn main() -> rusqlite::Result<()> {
                 eprintln!("⚠️ Please provide at least one of: position, start, lunch, end");
             }
 
-            return Ok(());
+            Ok(())
         }
 
         Commands::List { period } => {
@@ -237,9 +251,7 @@ fn main() -> rusqlite::Result<()> {
                 }
             }
 
-            return Ok(());
+            Ok(())
         }
     }
-
-    Ok(())
 }
