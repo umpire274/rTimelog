@@ -85,35 +85,18 @@ fn main() -> rusqlite::Result<()> {
     match cli.command {
         Commands::Init => {
             if let Some(custom) = &cli.db {
-                let custom_path = std::path::Path::new(custom);
-                if custom_path.is_absolute() {
-                    // percorso assoluto → gestito direttamente
-                    if let Some(parent) = custom_path.parent() {
-                        std::fs::create_dir_all(parent).unwrap();
-                    }
-                    if !custom_path.exists() {
-                        std::fs::File::create(custom_path).unwrap();
-                    }
-                    let conn = Connection::open(custom_path)?;
-                    db::init_db(&conn)?;
-                    println!("✅ Database initialized at {}", custom_path.display());
-                } else {
-                    // solo nome file → lascia a Config::init_all la gestione
-                    Config::init_all(Some(custom.clone())).unwrap();
-                    let config = Config::load();
-                    let conn = Connection::open(&config.database)?;
-                    db::init_db(&conn)?;
-                    println!("✅ Database initialized at {}", config.database);
-                }
+                // Passa sempre la stringa a init_all, sia nome che path assoluto
+                Config::init_all(Some(custom.clone())).unwrap();
             } else {
-                // nessun parametro → default
                 Config::init_all(None).unwrap();
-                let config = Config::load();
-                let conn = Connection::open(&config.database)?;
-                db::init_db(&conn)?;
-                println!("✅ Database initialized at {}", config.database);
             }
 
+            // Ora carichiamo la config salvata
+            let config = Config::load();
+            let conn = Connection::open(&config.database)?;
+            db::init_db(&conn)?;
+
+            println!("✅ Database initialized at {}", config.database);
             Ok(())
         }
 
@@ -262,7 +245,7 @@ fn main() -> rusqlite::Result<()> {
                         };
 
                         println!(
-                            "{:>3}: {} | Position {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>3} min\x1b[0m",
+                            "{:>3}: {} | Position {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                             s.id,
                             s.date,
                             s.position,

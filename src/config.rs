@@ -53,10 +53,17 @@ impl Config {
         fs::create_dir_all(&dir)?;
 
         // DB name: user provided or default
-        let db_name = custom_name.unwrap_or_else(|| "rtimelog.sqlite".to_string());
-        let db_path = dir.join(&db_name);
+        let db_path = if let Some(name) = custom_name {
+            let p = std::path::Path::new(&name);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                dir.join(p)
+            }
+        } else {
+            dir.join("rtimelog.sqlite")
+        };
 
-        // Default config
         let config = Config {
             database: db_path.to_string_lossy().to_string(),
             default_position: "O".to_string(),
