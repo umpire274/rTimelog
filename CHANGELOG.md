@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.5] - 2025-09-16
+### Added
+- New `conf` command to handle the configuration file
+- `--print` option for `conf` to print the current configuration file
+- `--edit` option for `conf` to edit the configuration file
+- `--editor` option for `conf`, to be used with `--edit`, to specify which editor to use (supports `vim`, `nano`, or any custom path)
+- Help messages for the new `conf` command and its options
+
+### Changed
+- Separated command implementations from `main.rs` into a new `commands.rs` source file
+
+### Fixed
+- Removed a stray debug print line
+
+---
+
 ## [0.2.1] - 2025-09-15
 ### Added
 - Support in `init` command for initializing a new database in:
