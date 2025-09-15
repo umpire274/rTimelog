@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/umpire274/rTimelog/actions/workflows/ci.yml/badge.svg)](https://github.com/umpire274/rTimelog/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/umpire274/rTimelog)](https://github.com/umpire274/rTimelog/releases)
-[![codecov](https://codecov.io/gh/umpire274/rTimelog/branch/main/graph/badge.svg?token=5fb9648b-1dd5-46d2-8130-3916505ef4a3)](https://codecov.io/gh/umpire274/rTimelog)
+[![codecov](https://codecov.io/gh/umpire274/rTimelog/graph/badge.svg?token=5WPQF58D5Z)](https://codecov.io/gh/umpire274/rTimelog)
 
 `rTimelog` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions, including working position, start and end times, and lunch breaks.  
 The tool calculates the expected exit time and the surplus of worked minutes.
