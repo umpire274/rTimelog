@@ -19,6 +19,10 @@ struct Cli {
     #[arg(global = true, long = "db")]
     db: Option<String>,
 
+    /// Run in test mode (no config file update)
+    #[arg(global = true, long = "test", hide = true)]
+    test: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -65,6 +69,7 @@ enum Commands {
 
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
+
     // Choose DB path: --db overrides config
     let db_path = if let Some(custom) = &cli.db {
         let custom_path = std::path::Path::new(custom);
@@ -76,7 +81,14 @@ fn main() -> rusqlite::Result<()> {
                 .to_string_lossy()
                 .to_string()
         }
+    } else if cli.test {
+        // In test mode: usa comunque il file di default ma NON chiama Config::load()
+        Config::config_dir()
+            .join("rtimelog.sqlite")
+            .to_string_lossy()
+            .to_string()
     } else {
+        // Produzione: carica dal file di configurazione
         Config::load().database
     };
 
@@ -85,29 +97,18 @@ fn main() -> rusqlite::Result<()> {
     match cli.command {
         Commands::Init => {
             if let Some(custom) = &cli.db {
-                let custom_path = std::path::Path::new(custom);
-                if custom_path.is_absolute() {
-                    // percorso assoluto → gestito direttamente
-                    if let Some(parent) = custom_path.parent() {
-                        std::fs::create_dir_all(parent).unwrap();
-                    }
-                    if !custom_path.exists() {
-                        std::fs::File::create(custom_path).unwrap();
-                    }
-                    let conn = Connection::open(custom_path)?;
-                    db::init_db(&conn)?;
-                    println!("✅ Database initialized at {}", custom_path.display());
-                } else {
-                    // solo nome file → lascia a Config::init_all la gestione
-                    Config::init_all(Some(custom.clone())).unwrap();
-                    let config = Config::load();
-                    let conn = Connection::open(&config.database)?;
-                    db::init_db(&conn)?;
-                    println!("✅ Database initialized at {}", config.database);
-                }
+                Config::init_all(Some(custom.clone()), cli.test).unwrap();
             } else {
-                // nessun parametro → default
-                Config::init_all(None).unwrap();
+                Config::init_all(None, cli.test).unwrap();
+            }
+
+            if cli.test {
+                // Usa direttamente db_path senza caricare il file di configurazione
+                let conn = Connection::open(&db_path)?;
+                db::init_db(&conn)?;
+                println!("✅ Test database initialized at {}", db_path);
+            } else {
+                // Produzione: carica il DB dal file di configurazione
                 let config = Config::load();
                 let conn = Connection::open(&config.database)?;
                 db::init_db(&conn)?;
@@ -220,10 +221,21 @@ fn main() -> rusqlite::Result<()> {
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
 
-                if has_start && has_end {
+                if has_start && !has_end {
+                    // I have only start hour, then I calculate expected end
+                    let expected = logic::calculate_expected_exit(&s.start, 0);
+                    println!(
+                        "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch   -\x1b[0m    | \x1b[90mEnd   -\x1b[0m   | Expected {} | \x1b[90mSurplus   -\x1b[0m",
+                        s.id,
+                        s.date,
+                        s.position,
+                        s.start,
+                        expected.format("%H:%M"),
+                    );
+                } else if has_start && has_end {
                     let start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
                     let end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
-                    let pos_char = s.position.chars().next().unwrap_or('A');
+                    let pos_char = s.position.chars().next().unwrap_or('O');
                     let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
 
                     // Compute effective lunch
@@ -251,7 +263,7 @@ fn main() -> rusqlite::Result<()> {
                         };
 
                         println!(
-                            "{:>3}: {} | Position {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>3} min\x1b[0m",
+                            "{:>3}: {} | Position {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                             s.id,
                             s.date,
                             s.position,

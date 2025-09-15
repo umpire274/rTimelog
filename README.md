@@ -20,7 +20,7 @@ The tool calculates the expected exit time and the surplus of worked minutes.
   - `--in` start time (HH:MM)
   - `--lunch` lunch duration in minutes (0–90)
   - `--out` end time (HH:MM)
-- Automatic normalization of lunch time if working from the Office:
+- Automatic normalization of lunchtime if working from the Office:
   - Minimum 30 minutes
   - Maximum 90 minutes
   - If less than 30 minutes are taken, the missing time is added to the expected exit time
@@ -49,6 +49,9 @@ rtimelog --db custom.sqlite init
 
 # Initialize with absolute path
 rtimelog --db /tmp/test.sqlite init
+
+# Initialize with an absolute path containing spaces (Windows version)
+rtimelog --db "G:\My Drive\Work\ACMEinc\timetable\rtimelog.sqlite" init
 ```
 
 ### Add sessions

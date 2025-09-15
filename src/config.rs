@@ -35,6 +35,7 @@ impl Config {
     /// Load configuration from file, or return defaults if not found
     pub fn load() -> Self {
         let path = Self::config_file();
+        println!("Config::load() - Loading config from {:?}", path);
 
         if path.exists() {
             let content = fs::read_to_string(&path).expect("❌ Failed to read configuration file");
@@ -48,31 +49,40 @@ impl Config {
     }
 
     /// Initialize configuration and database files
-    pub fn init_all(custom_name: Option<String>) -> io::Result<()> {
+    pub fn init_all(custom_name: Option<String>, is_test: bool) -> io::Result<()> {
         let dir = Self::config_dir();
         fs::create_dir_all(&dir)?;
 
         // DB name: user provided or default
-        let db_name = custom_name.unwrap_or_else(|| "rtimelog.sqlite".to_string());
-        let db_path = dir.join(&db_name);
+        let db_path = if let Some(name) = custom_name {
+            let p = std::path::Path::new(&name);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                dir.join(p)
+            }
+        } else {
+            dir.join("rtimelog.sqlite")
+        };
 
-        // Default config
         let config = Config {
             database: db_path.to_string_lossy().to_string(),
             default_position: "O".to_string(),
         };
 
         // Write config file
-        let yaml = serde_yaml::to_string(&config).unwrap();
-        let mut file = fs::File::create(Self::config_file())?;
-        file.write_all(yaml.as_bytes())?;
+        if !is_test {
+            let yaml = serde_yaml::to_string(&config).unwrap();
+            let mut file = fs::File::create(Self::config_file())?;
+            file.write_all(yaml.as_bytes())?;
+            println!("✅ Config file: {:?}", Self::config_file());
+        }
 
         // Create empty DB file if not exists
         if !db_path.exists() {
             fs::File::create(&db_path)?;
         }
 
-        println!("✅ Config file: {:?}", Self::config_file());
         println!("✅ Database:    {:?}", db_path);
 
         Ok(())

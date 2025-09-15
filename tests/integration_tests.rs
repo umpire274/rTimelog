@@ -1,30 +1,32 @@
 use assert_cmd::Command;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use std::env;
 use std::path::PathBuf;
 
 /// Create a unique test DB path inside the system temp dir
 fn setup_test_db(name: &str) -> String {
-    let mut path = PathBuf::new();
-    if cfg!(target_os = "windows") {
-        path.push("C:\\Windows\\Temp\\");
-    } else {
-        path.push("/tmp/");
-    }
+    // Cross-platform: /tmp su Linux/macOS, %TEMP% su Windows
+    let mut path: PathBuf = env::temp_dir();
     path.push(format!("{}_rtimelog.sqlite", name));
+
     let db_path = path.to_string_lossy().to_string();
-    std::fs::remove_file(&db_path).ok(); // reset if exists
+
+    // Rimuove il file se esiste già (reset)
+    std::fs::remove_file(&db_path).ok();
+
     db_path
 }
 
 #[test]
 fn test_list_sessions_all() {
     let db_path = setup_test_db("all");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!("test_list_sessions_all() Using test DB: {}", db_path);
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -86,6 +88,7 @@ fn test_list_sessions_all() {
 #[test]
 fn test_list_sessions_filter_year() {
     let db_path = setup_test_db("year");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_list_sessions_filter_year() Using test DB: {}",
         db_path
@@ -93,7 +96,7 @@ fn test_list_sessions_filter_year() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -160,6 +163,7 @@ fn test_list_sessions_filter_year() {
 #[test]
 fn test_list_sessions_filter_year_month() {
     let db_path = setup_test_db("year_month");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_list_sessions_filter_year_month() Using test DB: {}",
         db_path
@@ -167,7 +171,7 @@ fn test_list_sessions_filter_year_month() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -254,6 +258,7 @@ fn test_list_sessions_filter_year_month() {
 #[test]
 fn test_list_sessions_invalid_period() {
     let db_path = setup_test_db("invalid_period");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_list_sessions_invalid_period() Using test DB: {}",
         db_path
@@ -261,7 +266,7 @@ fn test_list_sessions_invalid_period() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -291,6 +296,7 @@ fn test_list_sessions_invalid_period() {
 #[test]
 fn test_add_and_list_with_company_position() {
     let db_path = setup_test_db("with_company_position");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_add_and_list_with_company_position() Using test DB: {}",
         db_path
@@ -299,7 +305,7 @@ fn test_add_and_list_with_company_position() {
     // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -334,6 +340,7 @@ fn test_add_and_list_with_company_position() {
 #[test]
 fn test_add_and_list_with_remote_position_lunch_zero() {
     let db_path = setup_test_db("with_remote_position_lunch_zero");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_add_and_list_with_remote_position_lunch_zero() Using test DB: {}",
         db_path
@@ -342,7 +349,7 @@ fn test_add_and_list_with_remote_position_lunch_zero() {
     // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -375,6 +382,7 @@ fn test_add_and_list_with_remote_position_lunch_zero() {
 #[test]
 fn test_add_and_list_incomplete_session() {
     let db_path = setup_test_db("incomplete_session");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_add_and_list_incomplete_session() Using test DB: {}",
         db_path
@@ -383,7 +391,7 @@ fn test_add_and_list_incomplete_session() {
     // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -402,5 +410,5 @@ fn test_add_and_list_incomplete_session() {
         .success()
         .stdout(contains("Position O"))
         .stdout(contains("Start 09:00"))
-        .stdout(contains("End -"));
+        .stdout(contains("End   -"));
 }
