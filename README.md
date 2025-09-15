@@ -109,6 +109,22 @@ The binary will be in `target/release/rtimelog`.
 
 ---
 
+## Development / Testing
+
+For integration tests or development purposes, you can use the `--test` flag.
+This ensures that no configuration file (`rtimelog.conf`) is written or modified
+in your user directory.
+
+Example:
+
+```bash
+cargo run -- --db /tmp/test.sqlite --test init
+cargo run -- --db /tmp/test.sqlite --test add 2025-09-15 O 09:00 30 17:00
+cargo run -- --db /tmp/test.sqlite --test list
+```
+
+---
+
 ## 📄 License
 
 This project is licensed under the MIT License.  
