@@ -2,11 +2,11 @@
 
 # Changelog
 
-## [0.2.0] - 2025-09-xx
+## [0.2.0] - 2025-09-14
 ### Added
 - Creation of a configuration file in the user home (depending on platform) with:
     - DB filename
-    - Default working position (`A`)
+    - Default working position (`O`)
 - New column `position` in SQLite DB to identify the working position of the day:
     - `O` = Office
     - `R` = Remote
