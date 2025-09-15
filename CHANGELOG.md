@@ -1,9 +1,5 @@
 # Changelog
 
-# Changelog
-
-# Changelog
-
 ## [0.2.1] - 2025-09-15
 ### Added
 - Support in `init` command for initializing a new database in:
@@ -13,6 +9,10 @@
 ### Changed
 - Updated `list` command: now shows the **expected end time** even when only the start time is provided for a given date
 - Updated integration tests for the new version v0.2.1
+
+### Fixed
+- Prevented production config (`rtimelog.conf`) from being overwritten during integration tests by introducing `--test` global flag
+- Ensured consistent DB path resolution when using `--db` together with `--test`
 
 ---
 
