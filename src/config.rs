@@ -42,7 +42,7 @@ impl Config {
         } else {
             Config {
                 database: Self::database_file().to_string_lossy().to_string(),
-                default_position: "A".to_string(),
+                default_position: "O".to_string(),
             }
         }
     }
@@ -59,7 +59,7 @@ impl Config {
         // Default config
         let config = Config {
             database: db_path.to_string_lossy().to_string(),
-            default_position: "A".to_string(),
+            default_position: "O".to_string(),
         };
 
         // Write config file

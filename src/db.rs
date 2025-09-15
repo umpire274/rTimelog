@@ -19,7 +19,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             date         TEXT NOT NULL,          -- YYYY-MM-DD
-            position     TEXT NOT NULL DEFAULT 'A' CHECK (position IN ('A','R')),
+            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R')),
             start_time   TEXT NOT NULL DEFAULT '',
             lunch_break  INTEGER NOT NULL DEFAULT 0,
             end_time     TEXT NOT NULL DEFAULT ''
@@ -44,7 +44,7 @@ fn ensure_position_column(conn: &Connection) -> Result<()> {
     }
     if !has_col {
         conn.execute(
-            "ALTER TABLE work_sessions ADD COLUMN position TEXT NOT NULL DEFAULT 'A' CHECK (position IN ('A','R'))",
+            "ALTER TABLE work_sessions ADD COLUMN position TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R'))",
             []
         )?;
     }

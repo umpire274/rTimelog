@@ -35,7 +35,7 @@ fn test_list_sessions_all() {
             &db_path,
             "add",
             "2025-08-31",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -50,7 +50,7 @@ fn test_list_sessions_all() {
             &db_path,
             "add",
             "2025-09-15",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -65,7 +65,7 @@ fn test_list_sessions_all() {
             &db_path,
             "add",
             "2024-09-10",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -104,7 +104,7 @@ fn test_list_sessions_filter_year() {
             &db_path,
             "add",
             "2025-01-10",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -119,7 +119,7 @@ fn test_list_sessions_filter_year() {
             &db_path,
             "add",
             "2025-05-20",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -134,7 +134,7 @@ fn test_list_sessions_filter_year() {
             &db_path,
             "add",
             "2024-12-31",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -178,7 +178,7 @@ fn test_list_sessions_filter_year_month() {
             &db_path,
             "add",
             "2025-09-01",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -193,7 +193,7 @@ fn test_list_sessions_filter_year_month() {
             &db_path,
             "add",
             "2025-09-15",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -208,7 +208,7 @@ fn test_list_sessions_filter_year_month() {
             &db_path,
             "add",
             "2025-10-01",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -223,7 +223,7 @@ fn test_list_sessions_filter_year_month() {
             &db_path,
             "add",
             "2024-09-01",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -272,7 +272,7 @@ fn test_list_sessions_invalid_period() {
             &db_path,
             "add",
             "2025-09-01",
-            "A",
+            "O",
             "09:00",
             "30",
             "17:00",
@@ -311,7 +311,7 @@ fn test_add_and_list_with_company_position() {
             &db_path,
             "add",
             "2025-09-14",
-            "A",
+            "O",
             "09:00",
             "0",
             "17:00",
@@ -325,7 +325,7 @@ fn test_add_and_list_with_company_position() {
         .args(["--db", &db_path, "list"])
         .assert()
         .success()
-        .stdout(contains("Position A"))
+        .stdout(contains("Position O"))
         .stdout(contains("Lunch 30 min"))
         .stdout(contains("Expected"))
         .stdout(contains("Surplus"));
@@ -390,7 +390,7 @@ fn test_add_and_list_incomplete_session() {
     // Add only start time (no end)
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "add", "2025-09-16", "A", "09:00"])
+        .args(["--db", &db_path, "add", "2025-09-16", "O", "09:00"])
         .assert()
         .success();
 
@@ -400,7 +400,7 @@ fn test_add_and_list_incomplete_session() {
         .args(["--db", &db_path, "list"])
         .assert()
         .success()
-        .stdout(contains("Position A"))
+        .stdout(contains("Position O"))
         .stdout(contains("Start 09:00"))
         .stdout(contains("End -"));
 }

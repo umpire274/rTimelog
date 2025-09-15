@@ -145,7 +145,7 @@ fn main() -> rusqlite::Result<()> {
             // ✅ Handle position
             if let Some(p) = pos.as_ref() {
                 let p = p.trim().to_uppercase();
-                if p != "A" && p != "R" {
+                if p != "O" && p != "R" {
                     eprintln!("❌ Invalid position: {} (use A=office or R=remote)", p);
                     return Ok(());
                 }
