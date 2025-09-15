@@ -21,6 +21,7 @@ fn setup_test_db(name: &str) -> String {
 #[test]
 fn test_list_sessions_all() {
     let db_path = setup_test_db("all");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!("test_list_sessions_all() Using test DB: {}", db_path);
 
     Command::cargo_bin("rtimelog")
@@ -87,6 +88,7 @@ fn test_list_sessions_all() {
 #[test]
 fn test_list_sessions_filter_year() {
     let db_path = setup_test_db("year");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_list_sessions_filter_year() Using test DB: {}",
         db_path
@@ -161,6 +163,7 @@ fn test_list_sessions_filter_year() {
 #[test]
 fn test_list_sessions_filter_year_month() {
     let db_path = setup_test_db("year_month");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_list_sessions_filter_year_month() Using test DB: {}",
         db_path
@@ -255,6 +258,7 @@ fn test_list_sessions_filter_year_month() {
 #[test]
 fn test_list_sessions_invalid_period() {
     let db_path = setup_test_db("invalid_period");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_list_sessions_invalid_period() Using test DB: {}",
         db_path
@@ -292,6 +296,7 @@ fn test_list_sessions_invalid_period() {
 #[test]
 fn test_add_and_list_with_company_position() {
     let db_path = setup_test_db("with_company_position");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_add_and_list_with_company_position() Using test DB: {}",
         db_path
@@ -335,6 +340,7 @@ fn test_add_and_list_with_company_position() {
 #[test]
 fn test_add_and_list_with_remote_position_lunch_zero() {
     let db_path = setup_test_db("with_remote_position_lunch_zero");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_add_and_list_with_remote_position_lunch_zero() Using test DB: {}",
         db_path
@@ -376,6 +382,7 @@ fn test_add_and_list_with_remote_position_lunch_zero() {
 #[test]
 fn test_add_and_list_incomplete_session() {
     let db_path = setup_test_db("incomplete_session");
+    println!("Temp dir: {:?}", env::temp_dir());
     println!(
         "test_add_and_list_incomplete_session() Using test DB: {}",
         db_path
