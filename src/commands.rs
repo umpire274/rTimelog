@@ -5,6 +5,18 @@ use r_timelog::config::Config;
 use r_timelog::{db, logic};
 use rusqlite::Connection;
 
+pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
+    if let Commands::Conf { print_config } = cmd {
+        if *print_config {
+            let config = Config::load();
+            println!("📄 Current configuration:");
+            println!("{}", serde_yaml::to_string(&config).unwrap());
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle the `init` command
 pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     if let Some(custom) = &cli.db {

@@ -62,6 +62,12 @@ enum Commands {
 
     /// Initialize the database and configuration
     Init,
+
+    /// Print current file configuration
+    Conf {
+        #[arg(long = "print")]
+        print_config: bool,
+    },
 }
 
 fn main() -> rusqlite::Result<()> {
@@ -95,5 +101,6 @@ fn main() -> rusqlite::Result<()> {
         Commands::Init => commands::handle_init(&cli, &db_path),
         Commands::Add { .. } => commands::handle_add(&cli.command, &db_path),
         Commands::List { period } => commands::handle_list(period.clone(), &db_path),
+        Commands::Conf { .. } => commands::handle_conf(&cli.command),
     }
 }
