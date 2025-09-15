@@ -195,7 +195,6 @@ fn main() -> rusqlite::Result<()> {
         }
 
         Commands::List { period } => {
-            println!("List: db used = {}", db_path);
             let conn = Connection::open(&db_path)?;
             let sessions = db::list_sessions(&conn, period.as_deref())?;
 
