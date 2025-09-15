@@ -35,7 +35,6 @@ impl Config {
     /// Load configuration from file, or return defaults if not found
     pub fn load() -> Self {
         let path = Self::config_file();
-        println!("Config::load() - Loading config from {:?}", path);
 
         if path.exists() {
             let content = fs::read_to_string(&path).expect("❌ Failed to read configuration file");

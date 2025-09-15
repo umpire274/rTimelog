@@ -41,46 +41,41 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 ### Initialize the database
 
 ```bash
-# Default path (~/.rtimelog/rtimelog.sqlite or %APPDATA%\rtimelog\rtimelog.sqlite)
 rtimelog init
-
-# Initialize with custom DB name inside config dir
 rtimelog --db custom.sqlite init
-
-# Initialize with absolute path
 rtimelog --db /tmp/test.sqlite init
-
-# Initialize with an absolute path containing spaces (Windows version)
 rtimelog --db "G:\My Drive\Work\ACMEinc\timetable\rtimelog.sqlite" init
 ```
 
 ### Add sessions
 
 ```bash
-# Add a complete session
 rtimelog add 2025-09-12 --pos O --in 09:00 --lunch 45 --out 17:30
-
-# Add only the start time
 rtimelog add 2025-09-12 --pos O --in 09:00
-
-# Add the lunch break later
 rtimelog add 2025-09-12 --lunch 45
-
-# Add the exit time
 rtimelog add 2025-09-12 --out 17:30
 ```
 
 ### List sessions
 
 ```bash
-# List all sessions
 rtimelog list
-
-# List sessions for a specific year
 rtimelog list --period 2025
-
-# List sessions for a specific year and month
 rtimelog list --period 2025-09
+```
+
+### Manage configuration (`conf`)
+
+```bash
+# Print the current configuration
+rtimelog conf --print
+
+# Edit the configuration with the default editor ($EDITOR, $VISUAL, or nano/vim/notepad)
+rtimelog conf --edit
+
+# Edit the configuration with a specific editor
+rtimelog conf --edit --editor vim
+rtimelog conf --edit --editor nano
 ```
 
 ---
@@ -97,25 +92,17 @@ rtimelog list --period 2025-09
 
 ## 🛠️ Build
 
-Clone the repository and build with Cargo:
-
 ```bash
 git clone https://github.com/umpire274/rTimelog.git
 cd rTimelog
 cargo build --release
 ```
 
-The binary will be in `target/release/rtimelog`.
-
 ---
 
 ## Development / Testing
 
-For integration tests or development purposes, you can use the `--test` flag.
-This ensures that no configuration file (`rtimelog.conf`) is written or modified
-in your user directory.
-
-Example:
+Use the `--test` flag to run against temporary databases without modifying the user configuration file:
 
 ```bash
 cargo run -- --db /tmp/test.sqlite --test init
@@ -127,5 +114,5 @@ cargo run -- --db /tmp/test.sqlite --test list
 
 ## 📄 License
 
-This project is licensed under the MIT License.  
-See [LICENSE](LICENSE) for details.
+MIT License.  
+See [LICENSE](LICENSE).
