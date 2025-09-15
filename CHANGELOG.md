@@ -2,6 +2,20 @@
 
 # Changelog
 
+# Changelog
+
+## [0.2.1] - 2025-09-xx
+### Added
+- Support in `init` command for initializing a new database in:
+  - an absolute path
+  - directories containing spaces in their names
+
+### Changed
+- Updated `list` command: now shows the **expected end time** even when only the start time is provided for a given date
+- Updated integration tests for the new version v0.2.1
+
+---
+
 ## [0.2.0] - 2025-09-14
 ### Added
 - Creation of a configuration file in the user home (depending on platform) with:
