@@ -1,5 +1,37 @@
 # Changelog
 
+# Changelog
+
+## [0.2.0] - 2025-09-xx
+### Added
+- Creation of a configuration file in the user home (depending on platform) with:
+    - DB filename
+    - Default working position (`A`)
+- New column `position` in SQLite DB to identify the working position of the day:
+    - `O` = Office
+    - `R` = Remote
+- New options for `add` command:
+    - `--pos` add the working position of the day, O = Office, R = Remote
+    - `--in` add the start hour of work
+    - `--lunch` add the duration of lunch
+    - `--out` add the end hour of work
+- Added global option `--db` to specify:
+    - a DB name (created under rTimelog config directory)
+    - or an absolute DB path
+- Added a message when the DB is empty (`⚠️ No recorded sessions found`)
+
+### Changed
+- Reorganized the output of the `list` command
+- Updated integration tests for new DB column `position`
+- Updated the logic for opening the connection to the DB file
+- Updated integration tests to use `--db` option
+
+### Notes
+- Previous intermediate changes introduced `--name` and config file handling,
+  but they have been replaced by the new global `--db` approach for consistency.
+
+---
+
 ## [v0.1.2] - 2025-09-12
 ### Added
 - Added functionality to search records by year (`yyyy`) or year-month (`yyyy-mm`) using option `--period`.
