@@ -313,7 +313,7 @@ fn test_add_and_list_with_company_position() {
             "2025-09-14",
             "O",
             "09:00",
-            "0",
+            "30",
             "17:00",
         ])
         .assert()
