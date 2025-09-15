@@ -402,5 +402,5 @@ fn test_add_and_list_incomplete_session() {
         .success()
         .stdout(contains("Position O"))
         .stdout(contains("Start 09:00"))
-        .stdout(contains("End -"));
+        .stdout(contains("End   -"));
 }
