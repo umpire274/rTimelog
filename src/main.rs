@@ -220,10 +220,21 @@ fn main() -> rusqlite::Result<()> {
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
 
-                if has_start && has_end {
+                if has_start && !has_end {
+                    // I have only start hour, then I calculate expected end
+                    let expected = logic::calculate_expected_exit(&s.start, 0);
+                    println!(
+                        "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch   -\x1b[0m    | \x1b[90mEnd   -\x1b[0m   | Expected {} | \x1b[90mSurplus   -\x1b[0m",
+                        s.id,
+                        s.date,
+                        s.position,
+                        s.start,
+                        expected.format("%H:%M"),
+                    );
+                } else if has_start && has_end {
                     let start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
                     let end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
-                    let pos_char = s.position.chars().next().unwrap_or('A');
+                    let pos_char = s.position.chars().next().unwrap_or('O');
                     let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
 
                     // Compute effective lunch
