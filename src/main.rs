@@ -63,10 +63,26 @@ enum Commands {
     /// Initialize the database and configuration
     Init,
 
-    /// Print current file configuration
+    /// Manage the configuration file (view or edit)
     Conf {
-        #[arg(long = "print")]
+        /// Print the current configuration file to stdout
+        #[arg(long = "print", help = "Print the current configuration file")]
         print_config: bool,
+
+        /// Edit the configuration file with your preferred editor
+        #[arg(
+            long = "edit",
+            help = "Edit the configuration file (default editor: $EDITOR, or nano/vim/notepad)"
+        )]
+        edit_config: bool,
+
+        /// Specify the editor to use (overrides $EDITOR/$VISUAL).
+        /// Common choices: vim, nano.
+        #[arg(
+            long = "editor",
+            help = "Specify the editor to use (vim, nano, or custom path)"
+        )]
+        editor: Option<String>,
     },
 }
 

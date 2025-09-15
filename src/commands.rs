@@ -4,13 +4,44 @@ use chrono::NaiveTime;
 use r_timelog::config::Config;
 use r_timelog::{db, logic};
 use rusqlite::Connection;
+use std::process::Command;
 
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
-    if let Commands::Conf { print_config } = cmd {
+    if let Commands::Conf {
+        print_config,
+        edit_config,
+        editor,
+    } = cmd
+    {
         if *print_config {
             let config = Config::load();
             println!("📄 Current configuration:");
             println!("{}", serde_yaml::to_string(&config).unwrap());
+        }
+        if *edit_config {
+            let path = Config::config_file();
+            let editor = editor.clone().unwrap_or_else(|| {
+                std::env::var("EDITOR")
+                    .or_else(|_| std::env::var("VISUAL"))
+                    .unwrap_or_else(|_| {
+                        if cfg!(target_os = "windows") {
+                            "notepad".to_string()
+                        } else {
+                            "nano".to_string()
+                        }
+                    })
+            });
+
+            let status = Command::new(editor)
+                .arg(&path)
+                .status()
+                .expect("Failed to launch editor");
+
+            if status.success() {
+                println!("✅ Configuration file edited successfully");
+            } else {
+                eprintln!("❌ Failed to edit configuration file");
+            }
         }
     }
 
