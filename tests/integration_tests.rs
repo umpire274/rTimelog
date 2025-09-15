@@ -1,16 +1,11 @@
 use assert_cmd::Command;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
-use std::path::PathBuf;
+use std::env;
 
 /// Create a unique test DB path inside the system temp dir
 fn setup_test_db(name: &str) -> String {
-    let mut path = PathBuf::new();
-    if cfg!(target_os = "windows") {
-        path.push("C:\\Windows\\Temp\\");
-    } else {
-        path.push("/tmp/");
-    }
+    let mut path = env::temp_dir();
     path.push(format!("{}_rtimelog.sqlite", name));
     let db_path = path.to_string_lossy().to_string();
     std::fs::remove_file(&db_path).ok(); // reset if exists
