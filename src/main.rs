@@ -19,6 +19,10 @@ struct Cli {
     #[arg(global = true, long = "db")]
     db: Option<String>,
 
+    /// Run in test mode (no config file update)
+    #[arg(global = true, long = "test", hide = true)]
+    test: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -65,6 +69,7 @@ enum Commands {
 
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
+
     // Choose DB path: --db overrides config
     let db_path = if let Some(custom) = &cli.db {
         let custom_path = std::path::Path::new(custom);
@@ -76,7 +81,14 @@ fn main() -> rusqlite::Result<()> {
                 .to_string_lossy()
                 .to_string()
         }
+    } else if cli.test {
+        // In test mode: usa comunque il file di default ma NON chiama Config::load()
+        Config::config_dir()
+            .join("rtimelog.sqlite")
+            .to_string_lossy()
+            .to_string()
     } else {
+        // Produzione: carica dal file di configurazione
         Config::load().database
     };
 
@@ -85,18 +97,24 @@ fn main() -> rusqlite::Result<()> {
     match cli.command {
         Commands::Init => {
             if let Some(custom) = &cli.db {
-                // Passa sempre la stringa a init_all, sia nome che path assoluto
-                Config::init_all(Some(custom.clone())).unwrap();
+                Config::init_all(Some(custom.clone()), cli.test).unwrap();
             } else {
-                Config::init_all(None).unwrap();
+                Config::init_all(None, cli.test).unwrap();
             }
 
-            // Ora carichiamo la config salvata
-            let config = Config::load();
-            let conn = Connection::open(&config.database)?;
-            db::init_db(&conn)?;
+            if cli.test {
+                // Usa direttamente db_path senza caricare il file di configurazione
+                let conn = Connection::open(&db_path)?;
+                db::init_db(&conn)?;
+                println!("✅ Test database initialized at {}", db_path);
+            } else {
+                // Produzione: carica il DB dal file di configurazione
+                let config = Config::load();
+                let conn = Connection::open(&config.database)?;
+                db::init_db(&conn)?;
+                println!("✅ Database initialized at {}", config.database);
+            }
 
-            println!("✅ Database initialized at {}", config.database);
             Ok(())
         }
 

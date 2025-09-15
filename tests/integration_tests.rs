@@ -26,7 +26,7 @@ fn test_list_sessions_all() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -96,7 +96,7 @@ fn test_list_sessions_filter_year() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -171,7 +171,7 @@ fn test_list_sessions_filter_year_month() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -266,7 +266,7 @@ fn test_list_sessions_invalid_period() {
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -305,7 +305,7 @@ fn test_add_and_list_with_company_position() {
     // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -349,7 +349,7 @@ fn test_add_and_list_with_remote_position_lunch_zero() {
     // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
@@ -391,7 +391,7 @@ fn test_add_and_list_incomplete_session() {
     // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "init"])
+        .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
