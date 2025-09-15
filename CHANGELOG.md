@@ -4,7 +4,7 @@
 
 # Changelog
 
-## [0.2.1] - 2025-09-xx
+## [0.2.1] - 2025-09-15
 ### Added
 - Support in `init` command for initializing a new database in:
   - an absolute path
