@@ -8,6 +8,7 @@ use std::path::PathBuf;
 pub struct Config {
     pub database: String,
     pub default_position: String,
+    pub min_work_duration: String,
 }
 
 impl Config {
@@ -43,6 +44,7 @@ impl Config {
             Config {
                 database: Self::database_file().to_string_lossy().to_string(),
                 default_position: "O".to_string(),
+                min_work_duration: "8h".to_string(),
             }
         }
     }
@@ -67,6 +69,7 @@ impl Config {
         let config = Config {
             database: db_path.to_string_lossy().to_string(),
             default_position: "O".to_string(),
+            min_work_duration: "8h".to_string(),
         };
 
         // Write config file

@@ -1,4 +1,7 @@
+use chrono::Utc;
 use rusqlite::{Connection, Result, params};
+mod migrate;
+pub use migrate::check_db_and_migrate;
 
 /// Represents a work session entry
 #[derive(Debug, Clone)]
@@ -19,7 +22,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             date         TEXT NOT NULL,          -- YYYY-MM-DD
-            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R')),
+            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H')),
             start_time   TEXT NOT NULL DEFAULT '',
             lunch_break  INTEGER NOT NULL DEFAULT 0,
             end_time     TEXT NOT NULL DEFAULT ''
@@ -181,5 +184,14 @@ pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
             (date, end),
         )?;
     }
+    Ok(())
+}
+
+pub fn ttlog(conn: &Connection, function: &str, message: &str) -> rusqlite::Result<()> {
+    let now = Utc::now().to_rfc3339(); // ISO 8601
+    conn.execute(
+        "INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)",
+        (&now, function, message),
+    )?;
     Ok(())
 }

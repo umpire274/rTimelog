@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 use r_timelog::config::Config;
+use r_timelog::db;
+use rusqlite::Connection;
 
 mod commands;
 
@@ -110,6 +112,11 @@ fn main() -> rusqlite::Result<()> {
         // Produzione: carica dal file di configurazione
         Config::load().database
     };
+
+    // 🔧 Workflow: controlla ed eventualmente migra lo schema
+    let conn = Connection::open(&db_path)?;
+    db::check_db_and_migrate(&conn)?;
+    drop(conn);
 
     println!();
 

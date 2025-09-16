@@ -1,12 +1,14 @@
 use chrono::{Duration, NaiveTime};
-use r_timelog::logic;
 use r_timelog::logic::month_name;
+use r_timelog::utils::mins2hhmm;
+use r_timelog::{logic, utils};
 
 #[test]
 fn test_expected_exit_with_min_lunch() {
     let start = "09:00";
     let lunch = 30;
-    let expected = logic::calculate_expected_exit(start, lunch);
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("17:30", "%H:%M").unwrap()
@@ -17,7 +19,8 @@ fn test_expected_exit_with_min_lunch() {
 fn test_expected_exit_with_short_lunch_treated_as_min() {
     let start = "09:00";
     let lunch = 15; // less than 30, treated as 30
-    let expected = logic::calculate_expected_exit(start, lunch);
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("17:30", "%H:%M").unwrap()
@@ -28,7 +31,8 @@ fn test_expected_exit_with_short_lunch_treated_as_min() {
 fn test_expected_exit_with_extra_lunch() {
     let start = "09:00";
     let lunch = 45; // 30 + 15 extra → recover in exit
-    let expected = logic::calculate_expected_exit(start, lunch);
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("17:45", "%H:%M").unwrap()
@@ -39,7 +43,8 @@ fn test_expected_exit_with_extra_lunch() {
 fn test_expected_exit_with_max_lunch_capped() {
     let start = "09:00";
     let lunch = 120; // capped to 90
-    let expected = logic::calculate_expected_exit(start, lunch);
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("18:30", "%H:%M").unwrap()
@@ -48,19 +53,22 @@ fn test_expected_exit_with_max_lunch_capped() {
 
 #[test]
 fn test_surplus_exact_time() {
-    let surplus = logic::calculate_surplus("09:00", 30, "17:30");
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let surplus = logic::calculate_surplus("09:00", 30, "17:30", work_minutes);
     assert_eq!(surplus, Duration::zero());
 }
 
 #[test]
 fn test_surplus_overtime() {
-    let surplus = logic::calculate_surplus("09:00", 60, "18:30");
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let surplus = logic::calculate_surplus("09:00", 30, "18:00", work_minutes);
     assert_eq!(surplus, Duration::minutes(30));
 }
 
 #[test]
 fn test_surplus_leave_early() {
-    let surplus = logic::calculate_surplus("09:00", 90, "18:00");
+    let work_minutes = utils::parse_work_duration_to_minutes("8h");
+    let surplus = logic::calculate_surplus("09:00", 30, "17:00", work_minutes);
     assert_eq!(surplus, Duration::minutes(-30));
 }
 
@@ -85,4 +93,25 @@ fn test_month_name_invalid() {
     assert_eq!(month_name("00"), "Unknown");
     assert_eq!(month_name("13"), "Unknown");
     assert_eq!(month_name("xx"), "Unknown");
+}
+
+#[test]
+fn test_exact_hours() {
+    assert_eq!(mins2hhmm(0), "00:00");
+    assert_eq!(mins2hhmm(60), "01:00");
+    assert_eq!(mins2hhmm(120), "02:00");
+}
+
+#[test]
+fn test_only_minutes() {
+    assert_eq!(mins2hhmm(5), "00:05");
+    assert_eq!(mins2hhmm(30), "00:30");
+    assert_eq!(mins2hhmm(59), "00:59");
+}
+
+#[test]
+fn test_hours_and_minutes() {
+    assert_eq!(mins2hhmm(75), "01:15");
+    assert_eq!(mins2hhmm(135), "02:15");
+    assert_eq!(mins2hhmm(1439), "23:59"); // limite di una giornata
 }
