@@ -1,7 +1,6 @@
 # Changelog
 
-# [0.3.0] - 2025-xx-xx
-
+# [0.3.0] - 2025-09-16
 ### Added
 
 - New parameter `working_time` in application configuration file to define the daily working duration.
