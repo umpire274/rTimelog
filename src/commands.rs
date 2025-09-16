@@ -103,12 +103,19 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         // Handle position
         if let Some(p) = pos.as_ref() {
             let p = p.trim().to_uppercase();
-            if p != "O" && p != "R" {
-                eprintln!("❌ Invalid position: {} (use O=office or R=remote)", p);
+            if p != "O" && p != "R" && p != "H" {
+                eprintln!(
+                    "❌ Invalid position: {} (use O=office or R=remote or H=Holiday)",
+                    p
+                );
                 return Ok(());
             }
             db::upsert_position(&conn, date, &p)?;
-            println!("✅ Position {} set for {}", p, date);
+            if p == "H" {
+                println!("✅ Holiday registered for {}", date);
+            } else {
+                println!("✅ Position {} set for {}", p, date);
+            }
         }
 
         // Handle start time
@@ -181,6 +188,15 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
     }
 
     for s in sessions {
+        if s.position == "H" {
+            //println!("{:>3}: {} | \x1b[35mHoliday\x1b[0m",s.id,s.date);
+            println!(
+                "{:>3}: {} | \x1b[1;37;45m {:30}Holiday{:30} \x1b[0m",
+                s.id, s.date, "", ""
+            );
+            continue;
+        }
+
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
 

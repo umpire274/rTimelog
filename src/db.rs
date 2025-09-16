@@ -19,7 +19,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             date         TEXT NOT NULL,          -- YYYY-MM-DD
-            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R')),
+            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H')),
             start_time   TEXT NOT NULL DEFAULT '',
             lunch_break  INTEGER NOT NULL DEFAULT 0,
             end_time     TEXT NOT NULL DEFAULT ''
