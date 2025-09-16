@@ -1,0 +1,33 @@
+use chrono::{NaiveDate, NaiveDateTime, ParseError};
+
+/// Convert a `NaiveDate` into an ISO 8601 string (YYYY-MM-DD)
+pub fn date2iso(date: &NaiveDate) -> String {
+    date.format("%Y-%m-%d").to_string()
+}
+
+/// Convert an ISO 8601 string (YYYY-MM-DD) into a `NaiveDate` (strict check)
+pub fn iso2date(s: &str) -> Result<NaiveDate, ParseError> {
+    let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")?;
+    // round-trip check: deve coincidere esattamente con l’input
+    if date2iso(&date) == s {
+        Ok(date)
+    } else {
+        NaiveDate::parse_from_str("xxxx-xx-xx", "%Y-%m-%d")
+    }
+}
+
+/// Convert a `NaiveDateTime` into an ISO 8601 string (YYYY-MM-DD HH:MM:SS)
+pub fn datetime2iso(dt: &NaiveDateTime) -> String {
+    dt.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+/// Convert an ISO 8601 string (YYYY-MM-DD HH:MM:SS) into a `NaiveDateTime` (strict check)
+pub fn iso2datetime(s: &str) -> Result<NaiveDateTime, ParseError> {
+    let dt = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")?;
+    // round-trip check
+    if datetime2iso(&dt) == s {
+        Ok(dt)
+    } else {
+        NaiveDateTime::parse_from_str("xxxx-xx-xx xx:xx:xx", "%Y-%m-%d %H:%M:%S")
+    }
+}
