@@ -26,9 +26,9 @@ pub fn month_name(month: &str) -> &'static str {
 /// - If the break is longer than 30 minutes, the extra time must be recovered
 ///   by leaving later the same day
 /// - Maximum lunch break allowed: 90 minutes
-pub fn calculate_expected_exit(start: &str, lunch: i32) -> NaiveTime {
+pub fn calculate_expected_exit(start: &str, work_minutes: i64, lunch: i32) -> NaiveTime {
     let start_time = NaiveTime::parse_from_str(start, "%H:%M").expect("Invalid start time format");
-    let work_duration = Duration::hours(8);
+    let work_duration = Duration::minutes(work_minutes);
 
     // Clamp lunch to [30, 90]
     let lunch_clamped = lunch.clamp(30, 90);
@@ -41,8 +41,8 @@ pub fn calculate_expected_exit(start: &str, lunch: i32) -> NaiveTime {
 }
 
 /// Calculate surplus time (actual exit - expected exit)
-pub fn calculate_surplus(start: &str, lunch: i32, end: &str) -> Duration {
-    let expected = calculate_expected_exit(start, lunch);
+pub fn calculate_surplus(start: &str, lunch: i32, end: &str, work_minutes: i64) -> Duration {
+    let expected = calculate_expected_exit(start, work_minutes, lunch);
     let actual = NaiveTime::parse_from_str(end, "%H:%M").expect("Invalid end time format");
 
     actual - expected
@@ -74,7 +74,7 @@ pub fn crosses_lunch_window(start: &str, end: &str) -> bool {
 pub fn effective_lunch_minutes(lunch: i32, start: &str, end: &str, position: char) -> i32 {
     let crosses = crosses_lunch_window(start, end);
     match position {
-        'A' => {
+        'O' => {
             if crosses {
                 let l = lunch.clamp(0, 90);
                 if l < 30 { 30 } else { l }

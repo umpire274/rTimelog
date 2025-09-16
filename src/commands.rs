@@ -2,7 +2,8 @@ use crate::Cli;
 use crate::Commands;
 use chrono::NaiveTime;
 use r_timelog::config::Config;
-use r_timelog::{db, logic};
+use r_timelog::utils::mins2hhmm;
+use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
 use std::process::Command;
 
@@ -191,7 +192,7 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
         if s.position == "H" {
             //println!("{:>3}: {} | \x1b[35mHoliday\x1b[0m",s.id,s.date);
             println!(
-                "{:>3}: {} | \x1b[1;37;45m {:30}Holiday{:30} \x1b[0m",
+                "{:>3}: {} | \x1b[1;37;45m {:29}Holiday{:30} \x1b[0m",
                 s.id, s.date, "", ""
             );
             continue;
@@ -199,16 +200,23 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
 
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
+        let work_minutes = utils::parse_work_duration_to_minutes(&Config::load().min_work_duration);
 
         if has_start && !has_end {
             // Only start → calculate expected end
-            let expected = logic::calculate_expected_exit(&s.start, 0);
+            let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+            // \x1b[90mLunch {}\x1b[0m
             println!(
-                "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch   -\x1b[0m    | \x1b[90mEnd   -\x1b[0m   | Expected {} | \x1b[90mSurplus   -\x1b[0m",
+                "{:>3}: {} | Position {} | Start {} | Lunch {} | \x1b[90mEnd   -\x1b[0m   | Expected {} | \x1b[90mSurplus   -\x1b[0m",
                 s.id,
                 s.date,
                 s.position,
                 s.start,
+                if s.lunch > 0 {
+                    mins2hhmm(s.lunch)
+                } else {
+                    "-".to_string()
+                },
                 expected.format("%H:%M"),
             );
         } else if has_start && has_end {
@@ -223,8 +231,10 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
 
             if crosses_lunch && effective_lunch > 0 {
                 // Case with lunch (inserted or automatic)
-                let expected = logic::calculate_expected_exit(&s.start, effective_lunch);
-                let surplus = logic::calculate_surplus(&s.start, effective_lunch, &s.end);
+                let expected =
+                    logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
+                let surplus =
+                    logic::calculate_surplus(&s.start, effective_lunch, &s.end, work_minutes);
                 let surplus_minutes = surplus.num_minutes();
 
                 let color_code = if surplus_minutes < 0 {
@@ -242,12 +252,16 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 };
 
                 println!(
-                    "{:>3}: {} | Position {} | Start {} | Lunch {:02} min | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
+                    "{:>3}: {} | Position {} | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                     s.id,
                     s.date,
                     s.position,
                     s.start,
-                    effective_lunch,
+                    if effective_lunch > 0 {
+                        mins2hhmm(effective_lunch)
+                    } else {
+                        "-".to_string()
+                    },
                     s.end,
                     expected.format("%H:%M"),
                     color_code,
@@ -257,7 +271,7 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 // Case without lunch (work entirely outside the window)
                 let duration = end_time - start_time;
                 println!(
-                    "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch   -\x1b[0m    | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
+                    "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch   -\x1b[0m   | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
                     s.id,
                     s.date,
                     s.position,
@@ -276,7 +290,7 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 s.position,
                 if has_start { &s.start } else { "-" },
                 if s.lunch > 0 {
-                    format!("{} min", s.lunch)
+                    mins2hhmm(s.lunch)
                 } else {
                     "-".to_string()
                 },
