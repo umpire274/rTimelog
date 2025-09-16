@@ -1,4 +1,7 @@
+use chrono::Utc;
 use rusqlite::{Connection, Result, params};
+mod migrate;
+pub use migrate::check_db_and_migrate;
 
 /// Represents a work session entry
 #[derive(Debug, Clone)]
@@ -181,5 +184,14 @@ pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
             (date, end),
         )?;
     }
+    Ok(())
+}
+
+pub fn ttlog(conn: &Connection, function: &str, message: &str) -> rusqlite::Result<()> {
+    let now = Utc::now().to_rfc3339(); // ISO 8601
+    conn.execute(
+        "INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)",
+        (&now, function, message),
+    )?;
     Ok(())
 }

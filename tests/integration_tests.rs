@@ -395,7 +395,15 @@ fn test_add_and_list_holiday_position() {
     // Adding a day with Holiday position
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "add", "2025-09-21", "--pos", "H"])
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-09-21",
+            "--pos",
+            "H",
+        ])
         .assert()
         .success()
         .stdout(contains("Holiday registered"));
@@ -403,9 +411,8 @@ fn test_add_and_list_holiday_position() {
     // List should show 'Holiday' as position and no more data's
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(&["--db", &db_path, "--test", "list"])
+        .args(["--db", &db_path, "--test", "list"])
         .assert()
         .success()
         .stdout(contains("Holiday"));
-
 }
