@@ -310,7 +310,7 @@ fn test_add_and_list_with_company_position() {
         .assert()
         .success()
         .stdout(contains("Position O"))
-        .stdout(contains("Lunch 30 min"))
+        .stdout(contains("Lunch 00:30"))
         .stdout(contains("Expected"))
         .stdout(contains("Surplus"));
 }
