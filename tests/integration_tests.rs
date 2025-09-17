@@ -514,7 +514,7 @@ fn test_list_sessions_positions_with_colors() {
     ];
 
     for (pos, label, color) in cases {
-        let db_path = crate::setup_test_db(&format!("pos_{}", pos));
+        let db_path = setup_test_db(&format!("pos_{}", pos));
 
         // Init DB
         Command::cargo_bin("rtimelog")
@@ -544,4 +544,77 @@ fn test_list_sessions_positions_with_colors() {
             .stdout(contains(label))
             .stdout(contains(color));
     }
+}
+
+#[test]
+fn test_add_and_delete_session() {
+    let db_path = setup_test_db("delete_session");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Add a session
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-09-20",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
+        .assert()
+        .success();
+
+    // Verify session is listed
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-20"));
+
+    // Delete session with ID 1
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "del", "1"])
+        .assert()
+        .success()
+        .stdout(contains("deleted"));
+
+    // Verify session no longer appears in list
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-20").not());
+}
+
+#[test]
+fn test_delete_nonexistent_session() {
+    let db_path = setup_test_db("delete_nonexistent");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Try to delete an ID that does not exist
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "del", "999"])
+        .assert()
+        .success() // il comando non deve andare in errore
+        .stdout(contains("No session found").or(contains("not found")));
 }
