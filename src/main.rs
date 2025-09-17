@@ -28,6 +28,30 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize the database and configuration
+    Init,
+
+    /// Manage the configuration file (view or edit)
+    Conf {
+        /// Print the current configuration file to stdout
+        #[arg(long = "print", help = "Print the current configuration file")]
+        print_config: bool,
+
+        /// Edit the configuration file with your preferred editor
+        #[arg(
+            long = "edit",
+            help = "Edit the configuration file (default editor: $EDITOR, or nano/vim/notepad)"
+        )]
+        edit_config: bool,
+
+        /// Specify the editor to use (overrides $EDITOR/$VISUAL).
+        /// Common choices: vim, nano.
+        #[arg(
+            long = "editor",
+            help = "Specify the editor to use (vim, nano, or custom path)"
+        )]
+        editor: Option<String>,
+    },
     /// Add or update a work session
     Add {
         /// Date (YYYY-MM-DD)
@@ -55,7 +79,11 @@ enum Commands {
         #[arg(long = "out")]
         end: Option<String>,
     },
-
+    /// Delete a work session by ID
+    Del {
+        /// ID of the session to delete
+        id: i32,
+    },
     /// List sessions
     List {
         #[arg(long, short)]
@@ -64,31 +92,6 @@ enum Commands {
         /// Filter by position (O=Office, R=Remote, H=Holiday)
         #[arg(long)]
         pos: Option<String>,
-    },
-
-    /// Initialize the database and configuration
-    Init,
-
-    /// Manage the configuration file (view or edit)
-    Conf {
-        /// Print the current configuration file to stdout
-        #[arg(long = "print", help = "Print the current configuration file")]
-        print_config: bool,
-
-        /// Edit the configuration file with your preferred editor
-        #[arg(
-            long = "edit",
-            help = "Edit the configuration file (default editor: $EDITOR, or nano/vim/notepad)"
-        )]
-        edit_config: bool,
-
-        /// Specify the editor to use (overrides $EDITOR/$VISUAL).
-        /// Common choices: vim, nano.
-        #[arg(
-            long = "editor",
-            help = "Specify the editor to use (vim, nano, or custom path)"
-        )]
-        editor: Option<String>,
     },
 }
 
@@ -126,10 +129,11 @@ fn main() -> rusqlite::Result<()> {
 
     match &cli.command {
         Commands::Init => commands::handle_init(&cli, &db_path),
+        Commands::Conf { .. } => commands::handle_conf(&cli.command),
         Commands::Add { .. } => commands::handle_add(&cli.command, &db_path),
+        Commands::Del { .. } => commands::handle_del(&cli.command, &db_path),
         Commands::List { period, pos } => {
             commands::handle_list(period.clone(), pos.clone(), &db_path)
         }
-        Commands::Conf { .. } => commands::handle_conf(&cli.command),
     }
 }

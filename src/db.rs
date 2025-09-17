@@ -78,6 +78,10 @@ pub fn add_session(
     Ok(())
 }
 
+pub fn delete_session(conn: &Connection, id: i32) -> Result<usize> {
+    conn.execute("DELETE FROM work_sessions WHERE id = ?", [id])
+}
+
 /// Return all saved work sessions, optionally filtered by year or year-month.
 pub fn list_sessions(
     conn: &Connection,

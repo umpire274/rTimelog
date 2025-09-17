@@ -73,6 +73,24 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
+pub fn handle_del(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
+    if let Commands::Del { id } = cmd {
+        let conn = Connection::open(db_path)?;
+
+        match db::delete_session(&conn, *id) {
+            Ok(rows) => {
+                if rows > 0 {
+                    println!("🗑️  Session with ID {} deleted", id);
+                } else {
+                    println!("⚠️  No session found with ID {}", id);
+                }
+            }
+            Err(e) => eprintln!("❌ Error deleting session: {}", e),
+        }
+    }
+    Ok(())
+}
+
 /// Handle the `add` command
 pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
     if let Commands::Add {
