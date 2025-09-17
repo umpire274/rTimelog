@@ -71,3 +71,34 @@ pub fn make_separator(ch: char, width: usize, align: usize) -> String {
 pub fn print_separator(ch: char, width: usize, align: usize) {
     println!("{}", make_separator(ch, width, align));
 }
+
+/// Return a tuple (label, colorized_label) for a given working position.
+/// O = Office (blue), R = Remote (cyan), F = On-site (yellow), H = Holiday (purple background).
+pub fn describe_position(pos: &str) -> (String, String) {
+    match pos {
+        "O" => {
+            let label = "Office".to_string();
+            let colored = "\x1b[34m".to_string();
+            (label, colored)
+        }
+        "R" => {
+            let label = "Remote".to_string();
+            let colored = "\x1b[36m".to_string();
+            (label, colored)
+        }
+        "C" => {
+            let label = "On-site (Client)".to_string();
+            let colored = "\x1b[33m".to_string();
+            (label, colored)
+        }
+        "H" => {
+            let label = "Holiday".to_string();
+            let colored = "\x1b[45;97;1m".to_string();
+            (label, colored)
+        }
+        _ => {
+            let label = pos.to_string();
+            (label.clone(), "\x1b[0m".to_string()) // fallback senza colore
+        }
+    }
+}
