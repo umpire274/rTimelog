@@ -162,9 +162,15 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
 }
 
 /// Handle the `list` command
-pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()> {
+pub fn handle_list(
+    period: Option<String>,
+    pos: Option<String>,
+    db_path: &str,
+) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
-    let sessions = db::list_sessions(&conn, period.as_deref())?;
+    // Normalize pos to uppercase
+    let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
+    let sessions = db::list_sessions(&conn, period.as_deref(), pos_upper.as_deref())?;
 
     if sessions.is_empty() {
         println!("⚠️  No recorded sessions found");
@@ -184,6 +190,8 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 year
             );
         }
+    } else if let Some(p) = pos.as_deref() {
+        println!("📅 Saved sessions for position {}:", p);
     } else {
         println!("📅 Saved sessions:");
     }
@@ -192,7 +200,6 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
 
     for s in sessions {
         if s.position == "H" {
-            //println!("{:>3}: {} | \x1b[35mHoliday\x1b[0m",s.id,s.date);
             println!(
                 "{:>3}: {} | \x1b[1;37;45m {:29}Holiday{:30} \x1b[0m",
                 s.id, s.date, "", ""
@@ -207,7 +214,6 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
         if has_start && !has_end {
             // Only start → calculate expected end
             let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
-            // \x1b[90mLunch {}\x1b[0m
 
             let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
             let lunch_str = if s.lunch > 0 {
@@ -218,13 +224,21 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
             // Forza la larghezza a 5 caratteri, allineato a destra
             let lunch_fmt = format!("{:^5}", lunch_str);
 
-            let end_color = if s.end != "" { "\x1b[0m" } else { "\x1b[90m" };
-            let end_str = if s.end != "" { s.end } else { "-".to_string() };
+            let end_color = if !s.end.is_empty() {
+                "\x1b[0m"
+            } else {
+                "\x1b[90m"
+            };
+            let end_str = if !s.end.is_empty() {
+                s.end
+            } else {
+                "-".to_string()
+            };
             // Forza la larghezza a 5 caratteri, allineato a destra
             let end_fmt = format!("{:^5}", end_str);
 
             println!(
-                "{:>3}: {} | Position {} | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | {}Surplus {:^8}\x1b[0m",
+                "{:>3}: {} | Position {} | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                 s.id,
                 s.date,
                 s.position,
@@ -234,7 +248,6 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 end_color,
                 end_fmt,
                 expected.format("%H:%M"),
-                "\x1b[90m",
                 "-",
             );
         } else if has_start && has_end {
