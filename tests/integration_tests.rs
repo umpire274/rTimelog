@@ -244,6 +244,92 @@ fn test_list_sessions_filter_year_month() {
 }
 
 #[test]
+fn test_list_sessions_filter_position() {
+    let db_path = setup_test_db("filter_position");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Add Office (O)
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-09-10",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
+        .assert()
+        .success();
+
+    // Add Remote (R)
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-09-11",
+            "R",
+            "09:15",
+            "0",
+            "17:15",
+        ])
+        .assert()
+        .success();
+
+    // Add Holiday (H)
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "add", "2025-09-12", "H"])
+        .assert()
+        .success();
+
+    // Filter O
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list", "--pos", "O"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-10"))
+        .stdout(contains("Position O"))
+        .stdout(contains("2025-09-11").not())
+        .stdout(contains("2025-09-12").not());
+
+    // Filter R
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list", "--pos", "R"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-11"))
+        .stdout(contains("Position R"))
+        .stdout(contains("2025-09-10").not())
+        .stdout(contains("2025-09-12").not());
+
+    // Filter H
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list", "--pos", "H"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-12"))
+        .stdout(contains("Holiday"))
+        .stdout(contains("2025-09-10").not())
+        .stdout(contains("2025-09-11").not());
+}
+
+#[test]
 fn test_list_sessions_invalid_period() {
     let db_path = setup_test_db("invalid_period");
 

@@ -60,6 +60,10 @@ enum Commands {
     List {
         #[arg(long, short)]
         period: Option<String>,
+
+        /// Filter by position (O=Office, R=Remote, H=Holiday)
+        #[arg(long)]
+        pos: Option<String>,
     },
 
     /// Initialize the database and configuration
@@ -123,7 +127,9 @@ fn main() -> rusqlite::Result<()> {
     match &cli.command {
         Commands::Init => commands::handle_init(&cli, &db_path),
         Commands::Add { .. } => commands::handle_add(&cli.command, &db_path),
-        Commands::List { period } => commands::handle_list(period.clone(), &db_path),
+        Commands::List { period, pos } => {
+            commands::handle_list(period.clone(), pos.clone(), &db_path)
+        }
         Commands::Conf { .. } => commands::handle_conf(&cli.command),
     }
 }

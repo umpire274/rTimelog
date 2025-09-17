@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, NaiveDateTime};
-    use r_timelog::utils::{date2iso, datetime2iso, iso2date, iso2datetime};
+    use r_timelog::utils::{date2iso, datetime2iso, iso2date, iso2datetime, make_separator};
 
     #[test]
     fn test_date2iso_and_iso2date() {
@@ -33,5 +33,32 @@ mod tests {
     fn test_invalid_datetime_string() {
         let invalid = "2025-09-21 14:35"; // mancano i secondi
         assert!(iso2datetime(invalid).is_err());
+    }
+
+    #[test]
+    fn test_make_separator_equal_signs() {
+        let sep = make_separator('=', 5, 10);
+        assert_eq!(sep.len(), 10); // totale = align
+        assert!(sep.ends_with("=====")); // gli ultimi 5 sono "="
+        assert!(sep.starts_with("     ")); // i primi 5 sono spazi
+    }
+
+    #[test]
+    fn test_make_separator_dollar() {
+        let sep = make_separator('$', 3, 6);
+        assert_eq!(sep, "   $$$");
+    }
+
+    #[test]
+    fn test_make_separator_dash() {
+        let sep = make_separator('-', 4, 8);
+        assert_eq!(sep, "    ----");
+    }
+
+    #[test]
+    fn test_make_separator_exact_align() {
+        // align == width → nessuno spazio davanti
+        let sep = make_separator('#', 6, 6);
+        assert_eq!(sep, "######");
     }
 }

@@ -58,3 +58,16 @@ pub fn mins2hhmm(minutes: i32) -> String {
     let mins = minutes % 60;
     format!("{:02}:{:02}", hours, mins)
 }
+
+/// Generate a separator string with `width` repetitions of the given `ch`,
+/// aligned to the given column (`align`).
+pub fn make_separator(ch: char, width: usize, align: usize) -> String {
+    let line = ch.to_string().repeat(width);
+    format!("{:>align$}", line, align = align)
+}
+
+/// Print a separator line with `width` repetitions of the given `ch`,
+/// aligned to the given column (`align`).
+pub fn print_separator(ch: char, width: usize, align: usize) {
+    println!("{}", make_separator(ch, width, align));
+}

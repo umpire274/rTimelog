@@ -27,6 +27,7 @@ The tool calculates the expected exit time and the surplus of worked minutes.
     - Maximum 1h 30m
     - Required only for `Office` position (`O`)
 - View surplus/deficit of worked time compared to expected
+- Display of the **total surplus** (sum of daily surplus/deficit) at the end of the `list` output.
 - Automatic database migration for schema changes
 - Cross-platform configuration file management:
     - Linux/macOS: `$HOME/.rtimelog/rtimelog.conf`
@@ -138,6 +139,14 @@ By year and month:
 
 ```bash
 rtimelog list --period 2025-09
+```
+
+For working position (O, R, H). You can specify the position in either uppercase or lowercase:
+
+```bash
+rtimelog list --pos O
+rtimelog list --pos R
+rtimelog list --pos H
 ```
 
 ---

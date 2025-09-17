@@ -1,6 +1,28 @@
 # Changelog
 
+# [0.3.1] - 2025-09-17
+### Added
+
+- New global option `--pos` in the `list` command to filter sessions by working position:
+    - `O` = Office
+    - `R` = Remote
+    - `H` = Holiday
+- A function `make_separator` and `print_separator` in `utils.rs` to generate aligned separators with custom character,
+  width, and alignment.
+- Unit tests for `make_separator`.
+- Integration test for the new `--pos` option of `list` command.
+- Display of the **total surplus** (sum of daily surpluses) at the end of the `list` output.
+
+### Changed
+
+- Improved the output formatting of the `list` command, including:
+    - aligned `Lunch` time using `HH:MM` or padded `-`
+    - cleaner separator handling with the new utility functions.
+
+---
+
 # [0.3.0] - 2025-09-16
+
 ### Added
 
 - New parameter `working_time` in application configuration file to define the daily working duration.

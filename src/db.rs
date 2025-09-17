@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, Result, ToSql, params};
 mod migrate;
 pub use migrate::check_db_and_migrate;
 
@@ -72,8 +72,45 @@ pub fn add_session(
 }
 
 /// Return all saved work sessions, optionally filtered by year or year-month.
-pub fn list_sessions(conn: &Connection, period: Option<&str>) -> Result<Vec<WorkSession>> {
-    let mapper = |row: &rusqlite::Row| {
+pub fn list_sessions(
+    conn: &Connection,
+    period: Option<&str>,
+    pos: Option<&str>,
+) -> Result<Vec<WorkSession>> {
+    let mut query = String::from(
+        "SELECT id, date, position, start_time, lunch_break, end_time FROM work_sessions",
+    );
+
+    let mut conditions = Vec::new();
+    let mut params: Vec<String> = Vec::new();
+
+    if let Some(p) = period {
+        if p.len() == 4 {
+            conditions.push("strftime('%Y', date) = ?".to_string());
+            params.push(p.to_string());
+        } else if p.len() == 7 {
+            conditions.push("strftime('%Y-%m', date) = ?".to_string());
+            params.push(p.to_string());
+        } else {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+    }
+
+    if let Some(pos_filter) = pos {
+        conditions.push("position = ?".to_string());
+        params.push(pos_filter.to_string());
+    }
+
+    if !conditions.is_empty() {
+        query.push_str(" WHERE ");
+        query.push_str(&conditions.join(" AND "));
+    }
+
+    query.push_str(" ORDER BY date ASC");
+
+    let mut stmt = conn.prepare(&query)?;
+    let params_refs: Vec<&dyn ToSql> = params.iter().map(|s| s as &dyn ToSql).collect();
+    let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(WorkSession {
             id: row.get(0)?,
             date: row.get(1)?,
@@ -82,45 +119,13 @@ pub fn list_sessions(conn: &Connection, period: Option<&str>) -> Result<Vec<Work
             lunch: row.get(4)?,
             end: row.get(5)?,
         })
-    };
+    })?;
 
-    let mut stmt;
-    let rows;
-
-    if let Some(p) = period {
-        if p.len() == 4 {
-            stmt = conn.prepare(
-                "SELECT id, date, position, start_time, lunch_break, end_time
-                 FROM work_sessions
-                 WHERE strftime('%Y', date) = ?1
-                 ORDER BY date ASC",
-            )?;
-            rows = stmt.query_map([p], mapper)?;
-        } else if p.len() == 7 {
-            stmt = conn.prepare(
-                "SELECT id, date, position, start_time, lunch_break, end_time
-                 FROM work_sessions
-                 WHERE strftime('%Y-%m', date) = ?1
-                 ORDER BY date ASC",
-            )?;
-            rows = stmt.query_map([p], mapper)?;
-        } else {
-            return Err(rusqlite::Error::InvalidQuery);
-        }
-    } else {
-        stmt = conn.prepare(
-            "SELECT id, date, position, start_time, lunch_break, end_time
-             FROM work_sessions
-             ORDER BY date ASC",
-        )?;
-        rows = stmt.query_map([], mapper)?;
+    let mut sessions = Vec::new();
+    for s in rows {
+        sessions.push(s?);
     }
-
-    let mut result = Vec::new();
-    for r in rows {
-        result.push(r?);
-    }
-    Ok(result)
+    Ok(sessions)
 }
 
 /// Insert or update the position (A=office, R=remote) for a given date.
