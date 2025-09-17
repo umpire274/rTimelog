@@ -188,6 +188,8 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
         println!("📅 Saved sessions:");
     }
 
+    let mut total_surplus = 0;
+
     for s in sessions {
         if s.position == "H" {
             //println!("{:>3}: {} | \x1b[35mHoliday\x1b[0m",s.id,s.date);
@@ -217,11 +219,7 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
             let lunch_fmt = format!("{:^5}", lunch_str);
 
             let end_color = if s.end != "" { "\x1b[0m" } else { "\x1b[90m" };
-            let end_str = if s.end != "" {
-                s.end
-            } else {
-                "-".to_string()
-            };
+            let end_str = if s.end != "" { s.end } else { "-".to_string() };
             // Forza la larghezza a 5 caratteri, allineato a destra
             let end_fmt = format!("{:^5}", end_str);
 
@@ -256,6 +254,7 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 let surplus =
                     logic::calculate_surplus(&s.start, effective_lunch, &s.end, work_minutes);
                 let surplus_minutes = surplus.num_minutes();
+                total_surplus += surplus_minutes;
 
                 let color_code = if surplus_minutes < 0 {
                     "\x1b[31m"
@@ -333,6 +332,28 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
                 if has_end { &s.end } else { "-" }
             );
         }
+    }
+
+    println!("\n{:>104}", "=".repeat(25));
+
+    if total_surplus != 0 {
+        let color_code = if total_surplus < 0 {
+            "\x1b[31m" // rosso
+        } else {
+            "\x1b[32m" // verde
+        };
+
+        let formatted_total = format!("{:+}", total_surplus);
+
+        println!(
+            "{:>113}",
+            format!(
+                "Σ Total surplus: {}{:>4} min\x1b[0m",
+                color_code, formatted_total
+            ),
+        );
+    } else {
+        println!("{:>113}", format!("Σ Total surplus: {:>4} min", 0));
     }
 
     Ok(())
