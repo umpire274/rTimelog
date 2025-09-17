@@ -2,7 +2,7 @@ use crate::Cli;
 use crate::Commands;
 use chrono::NaiveTime;
 use r_timelog::config::Config;
-use r_timelog::utils::mins2hhmm;
+use r_timelog::utils::{mins2hhmm, print_separator};
 use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
 use std::process::Command;
@@ -334,7 +334,8 @@ pub fn handle_list(period: Option<String>, db_path: &str) -> rusqlite::Result<()
         }
     }
 
-    println!("\n{:>104}", "=".repeat(25));
+    println!();
+    print_separator('-', 25, 104);
 
     if total_surplus != 0 {
         let color_code = if total_surplus < 0 {
