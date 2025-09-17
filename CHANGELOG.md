@@ -1,6 +1,30 @@
 # Changelog
 
+# [0.3.2] - 2025-09-17
+
+### Added
+
+- New command del to delete a work session by id from the work_sessions table.
+- New working position C = On-Site (Client).
+- Utility function to map working positions (O, R, C, H) into descriptive, colorized labels.
+- Unit test for the new utility function.
+- Integration tests for:
+    - del command (successful and unsuccessful cases).
+    - describe_position function.
+
+### Changed
+
+- Output of the list command updated:
+- Supports the new working position C=On-Site (Client).
+- Displays colorized working positions for better readability.
+- Reformatted integration test outputs for consistency.
+- Updated SQL in init command to support the new position C.
+- Introduced migration function for release 0.3.2.
+
+---
+
 # [0.3.1] - 2025-09-17
+
 ### Added
 
 - New global option `--pos` in the `list` command to filter sessions by working position:
