@@ -2,7 +2,7 @@ use crate::Cli;
 use crate::Commands;
 use chrono::NaiveTime;
 use r_timelog::config::Config;
-use r_timelog::utils::{mins2hhmm, print_separator};
+use r_timelog::utils::{describe_position, mins2hhmm, print_separator};
 use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
 use std::process::Command;
@@ -104,19 +104,16 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         // Handle position
         if let Some(p) = pos.as_ref() {
             let p = p.trim().to_uppercase();
-            if p != "O" && p != "R" && p != "H" {
+            if p != "O" && p != "R" && p != "H" && p != "C" {
                 eprintln!(
-                    "❌ Invalid position: {} (use O=office or R=remote or H=Holiday)",
+                    "❌ Invalid position: {} (use O=office or R=remote or H=Holiday or C=On-Site)",
                     p
                 );
                 return Ok(());
             }
             db::upsert_position(&conn, date, &p)?;
-            if p == "H" {
-                println!("✅ Holiday registered for {}", date);
-            } else {
-                println!("✅ Position {} set for {}", p, date);
-            }
+            let (pos_string, _) = describe_position(&p);
+            println!("✅ Position {} set for {}", pos_string, date);
         }
 
         // Handle start time
@@ -199,14 +196,7 @@ pub fn handle_list(
     let mut total_surplus = 0;
 
     for s in sessions {
-        if s.position == "H" {
-            println!(
-                "{:>3}: {} | \x1b[1;37;45m {:29}Holiday{:30} \x1b[0m",
-                s.id, s.date, "", ""
-            );
-            continue;
-        }
-
+        let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
         let work_minutes = utils::parse_work_duration_to_minutes(&Config::load().min_work_duration);
@@ -238,10 +228,11 @@ pub fn handle_list(
             let end_fmt = format!("{:^5}", end_str);
 
             println!(
-                "{:>3}: {} | Position {} | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                 s.id,
                 s.date,
-                s.position,
+                pos_color,
+                pos_string,
                 s.start,
                 lunch_color,
                 lunch_fmt,
@@ -293,10 +284,11 @@ pub fn handle_list(
                 let lunch_fmt = format!("{:^5}", lunch_str);
 
                 println!(
-                    "{:>3}: {} | Position {} | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
+                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                     s.id,
                     s.date,
-                    s.position,
+                    pos_color,
+                    pos_string,
                     s.start,
                     lunch_fmt,
                     s.end,
@@ -313,10 +305,11 @@ pub fn handle_list(
                 let lunch_fmt = format!("{:^5}", lunch_str);
 
                 println!(
-                    "{:>3}: {} | Position {} | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
+                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
                     s.id,
                     s.date,
-                    s.position,
+                    pos_color,
+                    pos_string,
                     s.start,
                     lunch_fmt,
                     s.end,
@@ -336,19 +329,22 @@ pub fn handle_list(
 
             // Incomplete information
             println!(
-                "{:>3}: {} | Position {} | Start {:^5} | Lunch {} | End {:^5}",
+                "{:>3}: {} | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
                 s.id,
                 s.date,
-                s.position,
+                pos_color,
+                pos_string,
                 if has_start { &s.start } else { "-" },
                 lunch_fmt,
-                if has_end { &s.end } else { "-" }
+                if has_end { &s.end } else { "-" },
+                "-",
+                "-",
             );
         }
     }
 
     println!();
-    print_separator('-', 25, 104);
+    print_separator('-', 25, 110);
 
     if total_surplus != 0 {
         let color_code = if total_surplus < 0 {
@@ -360,14 +356,14 @@ pub fn handle_list(
         let formatted_total = format!("{:+}", total_surplus);
 
         println!(
-            "{:>113}",
+            "{:>119}",
             format!(
                 "Σ Total surplus: {}{:>4} min\x1b[0m",
                 color_code, formatted_total
             ),
         );
     } else {
-        println!("{:>113}", format!("Σ Total surplus: {:>4} min", 0));
+        println!("{:>119}", format!("Σ Total surplus: {:>4} min", 0));
     }
 
     Ok(())
