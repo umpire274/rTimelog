@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, NaiveDateTime};
-    use r_timelog::utils::{date2iso, datetime2iso, iso2date, iso2datetime, make_separator};
+    use r_timelog::utils::{
+        date2iso, datetime2iso, describe_position, iso2date, iso2datetime, make_separator,
+    };
 
     #[test]
     fn test_date2iso_and_iso2date() {
@@ -60,5 +62,40 @@ mod tests {
         // align == width → nessuno spazio davanti
         let sep = make_separator('#', 6, 6);
         assert_eq!(sep, "######");
+    }
+
+    #[test]
+    fn test_describe_office() {
+        let (label, color) = describe_position("O");
+        assert_eq!(label, "Office");
+        assert_eq!(color, "\x1b[34m");
+    }
+
+    #[test]
+    fn test_describe_remote() {
+        let (label, color) = describe_position("R");
+        assert_eq!(label, "Remote");
+        assert_eq!(color, "\x1b[36m");
+    }
+
+    #[test]
+    fn test_describe_client() {
+        let (label, color) = describe_position("C");
+        assert_eq!(label, "On-site (Client)");
+        assert_eq!(color, "\x1b[33m");
+    }
+
+    #[test]
+    fn test_describe_holiday() {
+        let (label, color) = describe_position("H");
+        assert_eq!(label, "Holiday");
+        assert_eq!(color, "\x1b[45;97;1m");
+    }
+
+    #[test]
+    fn test_describe_fallback() {
+        let (label, color) = describe_position("X");
+        assert_eq!(label, "X");
+        assert_eq!(color, "\x1b[0m"); // default reset
     }
 }

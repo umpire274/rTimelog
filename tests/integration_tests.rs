@@ -302,7 +302,7 @@ fn test_list_sessions_filter_position() {
         .assert()
         .success()
         .stdout(contains("2025-09-10"))
-        .stdout(contains("Position O"))
+        .stdout(contains("Office"))
         .stdout(contains("2025-09-11").not())
         .stdout(contains("2025-09-12").not());
 
@@ -313,7 +313,7 @@ fn test_list_sessions_filter_position() {
         .assert()
         .success()
         .stdout(contains("2025-09-11"))
-        .stdout(contains("Position R"))
+        .stdout(contains("Remote"))
         .stdout(contains("2025-09-10").not())
         .stdout(contains("2025-09-12").not());
 
@@ -395,7 +395,7 @@ fn test_add_and_list_with_company_position() {
         .args(["--db", &db_path, "list"])
         .assert()
         .success()
-        .stdout(contains("Position O"))
+        .stdout(contains("Office"))
         .stdout(contains("Lunch 00:30"))
         .stdout(contains("Expected"))
         .stdout(contains("Surplus"));
@@ -434,7 +434,7 @@ fn test_add_and_list_with_remote_position_lunch_zero() {
         .args(["--db", &db_path, "list"])
         .assert()
         .success()
-        .stdout(contains("Position R"))
+        .stdout(contains("Remote"))
         .stdout(contains("Lunch   -"));
 }
 
@@ -462,7 +462,7 @@ fn test_add_and_list_incomplete_session() {
         .args(["--db", &db_path, "list"])
         .assert()
         .success()
-        .stdout(contains("Position O"))
+        .stdout(contains("Office"))
         .stdout(contains("Start 09:00"))
         .stdout(contains("End   -"));
 }
@@ -492,7 +492,7 @@ fn test_add_and_list_holiday_position() {
         ])
         .assert()
         .success()
-        .stdout(contains("Holiday registered"));
+        .stdout(contains("Position Holiday"));
 
     // List should show 'Holiday' as position and no more data's
     Command::cargo_bin("rtimelog")
@@ -501,4 +501,120 @@ fn test_add_and_list_holiday_position() {
         .assert()
         .success()
         .stdout(contains("Holiday"));
+}
+
+#[test]
+fn test_list_sessions_positions_with_colors() {
+    // (Position, Label atteso, Codice ANSI atteso)
+    let cases = vec![
+        ("O", "Office", "\x1b[34m"),           // Office → blu
+        ("R", "Remote", "\x1b[36m"),           // Remote → ciano
+        ("C", "On-site (Client)", "\x1b[33m"), // Client → giallo
+        ("H", "Holiday", "\x1b[45;97;1m"),     // Holiday → viola bg + bold
+    ];
+
+    for (pos, label, color) in cases {
+        let db_path = setup_test_db(&format!("pos_{}", pos));
+
+        // Init DB
+        Command::cargo_bin("rtimelog")
+            .unwrap()
+            .args(["--db", &db_path, "--test", "init"])
+            .assert()
+            .success();
+
+        // Add session (Holiday non ha start/end, le altre sì)
+        let mut args = vec!["--db", &db_path, "--test", "add", "2025-09-15", pos];
+        if pos != "H" {
+            args.extend(&["09:00", "30", "17:00"]);
+        }
+
+        Command::cargo_bin("rtimelog")
+            .unwrap()
+            .args(&args)
+            .assert()
+            .success();
+
+        // List filtrato per posizione → deve contenere label e colore
+        Command::cargo_bin("rtimelog")
+            .unwrap()
+            .args(["--db", &db_path, "--test", "list", "--pos", pos])
+            .assert()
+            .success()
+            .stdout(contains(label))
+            .stdout(contains(color));
+    }
+}
+
+#[test]
+fn test_add_and_delete_session() {
+    let db_path = setup_test_db("delete_session");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Add a session
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-09-20",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
+        .assert()
+        .success();
+
+    // Verify session is listed
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-20"));
+
+    // Delete session with ID 1
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "del", "1"])
+        .assert()
+        .success()
+        .stdout(contains("deleted"));
+
+    // Verify session no longer appears in list
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "list"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-20").not());
+}
+
+#[test]
+fn test_delete_nonexistent_session() {
+    let db_path = setup_test_db("delete_nonexistent");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Try to delete an ID that does not exist
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "del", "999"])
+        .assert()
+        .success() // il comando non deve andare in errore
+        .stdout(contains("No session found").or(contains("not found")));
 }

@@ -22,10 +22,17 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             date         TEXT NOT NULL,          -- YYYY-MM-DD
-            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H')),
+            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C')),
             start_time   TEXT NOT NULL DEFAULT '',
             lunch_break  INTEGER NOT NULL DEFAULT 0,
             end_time     TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            function TEXT NOT NULL,
+            message TEXT NOT NULL
         );
         ",
     )?;
@@ -69,6 +76,10 @@ pub fn add_session(
         params![date, position, start, lunch, end],
     )?;
     Ok(())
+}
+
+pub fn delete_session(conn: &Connection, id: i32) -> Result<usize> {
+    conn.execute("DELETE FROM work_sessions WHERE id = ?", [id])
 }
 
 /// Return all saved work sessions, optionally filtered by year or year-month.

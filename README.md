@@ -12,11 +12,21 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ## ✨ Features
 
-- Add work sessions with:
-    - Start time
-    - Lunch break duration
-    - End time
-    - Position (`O` = Office, `R` = Remote, `H` = Holiday)
+- Add, update, list and del work sessions.
+- Track **start time**, **lunch duration**, and **end time**.
+- Calculate **expected exit time** and **surplus** automatically.
+- Manage multiple **working positions**:
+    - `O` = **Office**
+    - `R` = **Remote**
+    - `C` = **On-Site (Client)**
+    - `H` = **Holiday**
+- Colorized output for better readability:
+    - **Blue** = Office
+    - **Cyan** = Remote
+    - **Yellow** = On-Site (Client)
+    - **Purple background + white bold** = Holiday
+- Configurable default DB path via configuration file or `--db` parameter.
+- Automatic DB migrations when upgrading the application.
 - Configurable daily working time (default `8h`)
 - Automatic expected exit calculation based on:
     - Start time
@@ -148,6 +158,24 @@ rtimelog list --pos O
 rtimelog list --pos R
 rtimelog list --pos H
 ```
+
+---
+
+Delete a session `id`
+
+Remove a session by its `id`:
+
+```bash
+rtimelog del 1
+```
+
+---
+
+## ⚠️ Notes
+
+- Lunchtime is validated: minimum 30 minutes, maximum 90 minutes for Office (O) position.
+- Holidays (H) ignore work and lunch logic, and are displayed as Holiday in purple background.
+- The --db global option allows selecting a custom database per execution, useful for testing or separate datasets.
 
 ---
 
