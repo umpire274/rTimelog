@@ -1,7 +1,10 @@
+use crate::config::Config;
 use crate::db;
 use chrono::Utc;
-use rusqlite::{Connection, Error, OptionalExtension};
+use rusqlite::{Connection, Error, OptionalExtension, ffi};
+use serde_yaml::Value;
 use std::collections::HashSet;
+use std::fs;
 
 pub struct Migration {
     pub version: &'static str,
@@ -53,6 +56,11 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Extend position CHECK to include 'C'",
         up: migrate_to_032_rel,
     },
+    Migration {
+        version: "20250919_0003_upgrade_config_file",
+        description: "Add into config file two new parameters: min_duration_lunch_break=30 e max_duration_lunch_break=90",
+        up: migrate_to_033_rel,
+    },
 ];
 
 /// Esegui solo le migrazioni non ancora applicate
@@ -69,6 +77,7 @@ pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
             println!("✅ Migration applied: {} — {}", m.version, m.description);
         }
     }
+    println!();
     Ok(())
 }
 
@@ -164,6 +173,69 @@ fn migrate_to_032_rel(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         println!("✅ Migration completed successfully.");
     }
+
+    Ok(())
+}
+
+pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
+    let path = Config::config_file();
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&path).map_err(|e| {
+        Error::SqliteFailure(
+            ffi::Error::new(1), // codice "Unknown error"
+            Some(format!("Failed to read config: {}", e)),
+        )
+    })?;
+    let mut value: Value = serde_yaml::from_str(&content).map_err(|e| {
+        Error::SqliteFailure(
+            ffi::Error::new(1),
+            Some(format!("Failed to parse config: {}", e)),
+        )
+    })?;
+
+    let obj = value.as_mapping_mut().ok_or_else(|| {
+        Error::SqliteFailure(
+            ffi::Error::new(1),
+            Some("Invalid YAML structure".to_string()),
+        )
+    })?;
+
+    if !obj.contains_key(Value::String("min_duration_lunch_break".to_string())) {
+        obj.insert(
+            Value::String("min_duration_lunch_break".to_string()),
+            Value::Number(30.into()),
+        );
+    }
+    if !obj.contains_key(Value::String("max_duration_lunch_break".to_string())) {
+        obj.insert(
+            Value::String("max_duration_lunch_break".to_string()),
+            Value::Number(90.into()),
+        );
+    }
+
+    let new_yaml = serde_yaml::to_string(&obj).map_err(|e| {
+        Error::SqliteFailure(
+            ffi::Error::new(1),
+            Some(format!("Failed to serialize config: {}", e)),
+        )
+    })?;
+
+    fs::write(&path, new_yaml).map_err(|e| {
+        Error::SqliteFailure(
+            ffi::Error::new(1),
+            Some(format!("Failed to write config: {}", e)),
+        )
+    })?;
+
+    db::ttlog(
+        conn,
+        "migrate_to_033_rel",
+        "Migration configuration file completed.",
+    )?;
+    println!("✅ Config file migrated: {:?}", path);
 
     Ok(())
 }

@@ -185,6 +185,7 @@ pub fn handle_list(
     period: Option<String>,
     pos: Option<String>,
     db_path: &str,
+    config: &Config,
 ) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
     db::run_pending_migrations(&conn)?;
@@ -273,7 +274,7 @@ pub fn handle_list(
 
             // Compute effective lunch
             let effective_lunch =
-                logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char);
+                logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char, config);
 
             if crosses_lunch && effective_lunch > 0 {
                 // Case with lunch (inserted or automatic)
