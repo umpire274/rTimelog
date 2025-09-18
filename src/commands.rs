@@ -19,29 +19,58 @@ pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
             println!("📄 Current configuration:");
             println!("{}", serde_yaml::to_string(&config).unwrap());
         }
+
         if *edit_config {
             let path = Config::config_file();
-            let editor = editor.clone().unwrap_or_else(|| {
-                std::env::var("EDITOR")
-                    .or_else(|_| std::env::var("VISUAL"))
-                    .unwrap_or_else(|_| {
-                        if cfg!(target_os = "windows") {
-                            "notepad".to_string()
-                        } else {
-                            "nano".to_string()
+
+            // Editor richiesto dall'utente (se esiste)
+            let requested_editor = editor.clone();
+
+            // Editor di default in base alla piattaforma
+            let default_editor = std::env::var("EDITOR")
+                .or_else(|_| std::env::var("VISUAL"))
+                .unwrap_or_else(|_| {
+                    if cfg!(target_os = "windows") {
+                        "notepad".to_string()
+                    } else {
+                        "nano".to_string()
+                    }
+                });
+
+            // Usa quello richiesto se possibile, altrimenti fallback
+            let editor_to_use = requested_editor.unwrap_or_else(|| default_editor.clone());
+
+            let status = Command::new(&editor_to_use).arg(&path).status();
+
+            match status {
+                Ok(s) if s.success() => {
+                    println!(
+                        "✅ Configuration file edited successfully with '{}'",
+                        editor_to_use
+                    );
+                }
+                Ok(_) | Err(_) => {
+                    eprintln!(
+                        "⚠️  Editor '{}' not available, falling back to '{}'",
+                        editor_to_use, default_editor
+                    );
+                    // Riprova col default
+                    let fallback_status = Command::new(&default_editor).arg(&path).status();
+                    match fallback_status {
+                        Ok(s) if s.success() => {
+                            println!(
+                                "✅ Configuration file edited successfully with fallback '{}'",
+                                default_editor
+                            );
                         }
-                    })
-            });
-
-            let status = Command::new(editor)
-                .arg(&path)
-                .status()
-                .expect("Failed to launch editor");
-
-            if status.success() {
-                println!("✅ Configuration file edited successfully");
-            } else {
-                eprintln!("❌ Failed to edit configuration file");
+                        Ok(_) | Err(_) => {
+                            eprintln!(
+                                "❌ Failed to edit configuration file with fallback '{}'",
+                                default_editor
+                            );
+                        }
+                    }
+                }
             }
         }
     }
