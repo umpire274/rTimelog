@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{Connection, Result, ToSql, params};
 mod migrate;
-pub use migrate::check_db_and_migrate;
+pub use migrate::run_pending_migrations;
 
 /// Represents a work session entry
 #[derive(Debug, Clone)]
@@ -36,28 +36,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         );
         ",
     )?;
-    ensure_position_column(conn)?; // migration for old databases
-    Ok(())
-}
-
-/// Ensure the `position` column exists (for database migrations).
-fn ensure_position_column(conn: &Connection) -> Result<()> {
-    let mut has_col = false;
-    let mut stmt = conn.prepare("PRAGMA table_info(work_sessions)")?;
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let name: String = row.get(1)?; // column name
-        if name == "position" {
-            has_col = true;
-            break;
-        }
-    }
-    if !has_col {
-        conn.execute(
-            "ALTER TABLE work_sessions ADD COLUMN position TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R'))",
-            []
-        )?;
-    }
+    run_pending_migrations(conn)?;
     Ok(())
 }
 
@@ -203,7 +182,7 @@ pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn ttlog(conn: &Connection, function: &str, message: &str) -> rusqlite::Result<()> {
+pub fn ttlog(conn: &Connection, function: &str, message: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339(); // ISO 8601
     conn.execute(
         "INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)",

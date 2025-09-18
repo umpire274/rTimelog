@@ -1,3 +1,4 @@
+use crate::config::Config;
 use chrono::{Duration, NaiveTime};
 
 pub fn month_name(month: &str) -> &'static str {
@@ -71,18 +72,27 @@ pub fn crosses_lunch_window(start: &str, end: &str) -> bool {
 /// - `A` (office): if the interval overlaps 12:30–14:30, lunch is mandatory [30..90].
 ///   If missing (0) it defaults to 30. Outside the window, lunch = 0.
 /// - `R` (remote): lunch is optional, 0..90 accepted, even if overlapping the window.
-pub fn effective_lunch_minutes(lunch: i32, start: &str, end: &str, position: char) -> i32 {
+pub fn effective_lunch_minutes(
+    lunch: i32,
+    start: &str,
+    end: &str,
+    position: char,
+    config: &Config,
+) -> i32 {
     let crosses = crosses_lunch_window(start, end);
     match position {
         'O' => {
             if crosses {
-                let l = lunch.clamp(0, 90);
+                let l = lunch.clamp(
+                    config.min_duration_lunch_break,
+                    config.max_duration_lunch_break,
+                );
                 if l < 30 { 30 } else { l }
             } else {
                 0
             }
         }
-        'R' => lunch.clamp(0, 90),
+        'H' => 0,
         _ => lunch.clamp(0, 90),
     }
 }

@@ -9,6 +9,17 @@ pub struct Config {
     pub database: String,
     pub default_position: String,
     pub min_work_duration: String,
+    #[serde(default = "default_min_lunch")]
+    pub min_duration_lunch_break: i32,
+    #[serde(default = "default_max_lunch")]
+    pub max_duration_lunch_break: i32,
+}
+
+fn default_min_lunch() -> i32 {
+    30
+}
+fn default_max_lunch() -> i32 {
+    90
 }
 
 impl Config {
@@ -45,6 +56,8 @@ impl Config {
                 database: Self::database_file().to_string_lossy().to_string(),
                 default_position: "O".to_string(),
                 min_work_duration: "8h".to_string(),
+                min_duration_lunch_break: 30,
+                max_duration_lunch_break: 90,
             }
         }
     }
@@ -70,6 +83,8 @@ impl Config {
             database: db_path.to_string_lossy().to_string(),
             default_position: "O".to_string(),
             min_work_duration: "8h".to_string(),
+            min_duration_lunch_break: 30,
+            max_duration_lunch_break: 90,
         };
 
         // Write config file

@@ -1,7 +1,5 @@
 use clap::{Parser, Subcommand};
 use r_timelog::config::Config;
-use r_timelog::db;
-use rusqlite::Connection;
 
 mod commands;
 
@@ -98,6 +96,8 @@ enum Commands {
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
 
+    let config = Config::load();
+
     // Choose DB path: --db overrides config
     let db_path = if let Some(custom) = &cli.db {
         let custom_path = std::path::Path::new(custom);
@@ -120,11 +120,6 @@ fn main() -> rusqlite::Result<()> {
         Config::load().database
     };
 
-    // 🔧 Workflow: controlla ed eventualmente migra lo schema
-    let conn = Connection::open(&db_path)?;
-    db::check_db_and_migrate(&conn)?;
-    drop(conn);
-
     println!();
 
     match &cli.command {
@@ -133,7 +128,7 @@ fn main() -> rusqlite::Result<()> {
         Commands::Add { .. } => commands::handle_add(&cli.command, &db_path),
         Commands::Del { .. } => commands::handle_del(&cli.command, &db_path),
         Commands::List { period, pos } => {
-            commands::handle_list(period.clone(), pos.clone(), &db_path)
+            commands::handle_list(period.clone(), pos.clone(), &db_path, &config)
         }
     }
 }
