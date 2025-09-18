@@ -60,12 +60,14 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     if cli.test {
         // In test mode, use db_path directly
         let conn = Connection::open(db_path)?;
+        db::run_pending_migrations(&conn)?;
         db::init_db(&conn)?;
         println!("✅ Test database initialized at {}", db_path);
     } else {
         // Production mode: reload config
         let config = Config::load();
         let conn = Connection::open(&config.database)?;
+        db::run_pending_migrations(&conn)?;
         db::init_db(&conn)?;
         println!("✅ Database initialized at {}", config.database);
     }
@@ -76,6 +78,7 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
 pub fn handle_del(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
     if let Commands::Del { id } = cmd {
         let conn = Connection::open(db_path)?;
+        db::run_pending_migrations(&conn)?;
 
         match db::delete_session(&conn, *id) {
             Ok(rows) => {
@@ -106,6 +109,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
     } = cmd
     {
         let conn = Connection::open(db_path)?;
+        db::run_pending_migrations(&conn)?;
 
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
@@ -183,6 +187,8 @@ pub fn handle_list(
     db_path: &str,
 ) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
+    db::run_pending_migrations(&conn)?;
+
     // Normalize pos to uppercase
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
     let sessions = db::list_sessions(&conn, period.as_deref(), pos_upper.as_deref())?;

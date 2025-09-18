@@ -1,5 +1,76 @@
 use crate::db;
-use rusqlite::{Connection, OptionalExtension};
+use chrono::Utc;
+use rusqlite::{Connection, Error, OptionalExtension};
+use std::collections::HashSet;
+
+pub struct Migration {
+    pub version: &'static str,
+    pub description: &'static str,
+    pub up: fn(&Connection) -> rusqlite::Result<()>, // ✅ giusto
+}
+
+/// Assicurati che esista la tabella che traccia le migrazioni applicate
+fn ensure_migrations_table(conn: &Connection) -> Result<(), Error> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     TEXT PRIMARY KEY,
+            applied_at  TEXT NOT NULL
+        );
+        "#,
+    )
+}
+
+/// Leggi le versioni già applicate
+fn applied_versions(conn: &Connection) -> Result<HashSet<String>, Error> {
+    let mut set = HashSet::new();
+    let mut stmt = conn.prepare("SELECT version FROM schema_migrations")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    for r in rows {
+        set.insert(r?);
+    }
+    Ok(set)
+}
+
+/// Segna come applicata una migrazione (solo dopo successo)
+fn mark_applied(conn: &Connection, version: &str) -> Result<(), Error> {
+    conn.execute(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+        (version, Utc::now().to_rfc3339()),
+    )?;
+    Ok(())
+}
+
+/// Elenco delle migrazioni in ORDINE (verranno eseguite in sequenza)
+static ALL_MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: "20250919_0001_create_log_table_and_position_H",
+        description: "Create 'log' table and extend position to include 'H'",
+        up: migrate_to_030_rel,
+    },
+    Migration {
+        version: "20250919_0002_position_add_C",
+        description: "Extend position CHECK to include 'C'",
+        up: migrate_to_032_rel,
+    },
+];
+
+/// Esegui solo le migrazioni non ancora applicate
+pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
+    ensure_migrations_table(conn)?;
+
+    let applied = applied_versions(conn)?;
+    for m in ALL_MIGRATIONS {
+        if !applied.contains(m.version) {
+            // Applica la migrazione
+            (m.up)(conn)?;
+            // Marca come applicata
+            mark_applied(conn, m.version)?;
+            println!("✅ Migration applied: {} — {}", m.version, m.description);
+        }
+    }
+    Ok(())
+}
 
 fn migrate_to_030_rel(conn: &Connection) -> rusqlite::Result<()> {
     // create new table log
@@ -93,13 +164,6 @@ fn migrate_to_032_rel(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         println!("✅ Migration completed successfully.");
     }
-
-    Ok(())
-}
-
-pub fn check_db_and_migrate(conn: &Connection) -> rusqlite::Result<()> {
-    migrate_to_030_rel(conn)?;
-    migrate_to_032_rel(conn)?;
 
     Ok(())
 }
