@@ -225,10 +225,10 @@ You can edit the configuration file directly from the CLI:
   rtimelog conf --edit --editor vi
   ```
 
-If the requested editor is not available on the platform, the file will be opened with the default system editor.
+If the requested editor is not available on the platform, the file will be opened with the **default system editor**.
 
 ⚠️ On **Linux/macOS**, the default editor is taken from the `$EDITOR` environment variable.
-If `$EDITOR` is not set, the system default editor will be used.
+If `$EDITOR` is not set, the system default editor (e.g. `nano`) will be used.
 
 ⚠️ On **Windows**, if you want to use an editor installed under `Program Files` (e.g. `Notepad++`), you must provide the
 **absolute path** in quotes:

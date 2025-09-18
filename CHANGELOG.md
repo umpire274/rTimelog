@@ -15,6 +15,9 @@
 
 - The logic for expected exit time now uses configurable lunch break limits from the configuration file instead of
   hardcoded values.
+- Improved conf --edit command:
+    - If the requested editor does not exist, the application now falls back to the default editor ($EDITOR/nano on
+      Linux/macOS, notepad on Windows) instead of panicking.
 
 ---
 
