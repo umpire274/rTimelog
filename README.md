@@ -12,7 +12,7 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ## ✨ Features
 
-- Add, update, list and del work sessions.
+- Add, update, delete and list work sessions.
 - Track **start time**, **lunch duration**, and **end time**.
 - Calculate **expected exit time** and **surplus** automatically.
 - Manage multiple **working positions**:
@@ -26,7 +26,7 @@ The tool calculates the expected exit time and the surplus of worked minutes.
     - **Yellow** = On-Site (Client)
     - **Purple background + white bold** = Holiday
 - Configurable default DB path via configuration file or `--db` parameter.
-- Automatic DB migrations when upgrading the application.
+- Automatic DB migrations with version tracking (`schema_migrations` table).
 - Configurable daily working time (default `8h`)
 - Automatic expected exit calculation based on:
     - Start time
@@ -171,6 +171,86 @@ rtimelog del 1
 
 ---
 
+## ⚙️ Configuration
+
+When you run rtimelog init, a configuration file is created in your home directory:
+
+- **Linux/macOS**: `$HOME/.rtimelog/rtimelog.conf`
+- **Windows**: `%APPDATA%\rtimelog\rtimelog.conf`
+
+### Example rtimelog.conf
+
+```yaml
+database: "/home/user/.rtimelog/rtimelog.sqlite"
+default_position: "O"
+min_duration_lunch_break: 30
+max_duration_lunch_break: 90
+```
+
+**Parameters**:
+
+- database: path of the SQLite database used by the application.
+- default_position: default working position (O, R, C, H).
+- min_duration_lunch_break: minimum lunch break in minutes (default: 30).
+- max_duration_lunch_break: maximum lunch break in minutes (default: 90).
+
+### Print the current configuration
+
+You can print the absolute path of the configuration file and its contents with:
+
+```bash
+rtimelog conf --print
+```
+
+Output example:
+
+```vbnet
+📄 Config file: /home/user/.rtimelog/rtimelog.conf
+database: "/home/user/.rtimelog/rtimelog.sqlite"
+default_position: "O"
+min_duration_lunch_break: 30
+max_duration_lunch_break: 90
+```
+
+### Edit the configuration
+
+You can edit the configuration file directly from the CLI:
+
+- With the default editor of your platform:
+  ```bash
+  rtimelog conf --edit
+  ```
+- With a specific editor (e.g. `vi`):
+  ```bash
+  rtimelog conf --edit --editor vi
+  ```
+
+If the requested editor is not available on the platform, the file will be opened with the default system editor.
+
+⚠️ On **Linux/macOS**, the default editor is taken from the `$EDITOR` environment variable.
+If `$EDITOR` is not set, the system default editor will be used.
+
+⚠️ On **Windows**, if you want to use an editor installed under `Program Files` (e.g. `Notepad++`), you must provide the
+**absolute path** in quotes:
+
+```ps
+rtimelog conf --edit --editor "C:\Program Files\Notepad++\notepad++.exe"
+```
+
+---
+
+## 🗄️ Database migrations
+
+Starting from **v0.3.3**, `rTimelog` manages its own internal DB versioning:
+
+- A dedicated table `schema_migrations` tracks all migrations applied.
+- On every command execution (`init`, `add`, `list`, `del`), the application checks if the database schema is outdated.
+- If pending migrations are found, they are applied automatically before continuing.
+
+This ensures that older databases remain compatible with newer versions of the application without manual intervention.
+
+---
+
 ## ⚠️ Notes
 
 - Lunchtime is validated: minimum 30 minutes, maximum 90 minutes for Office (O) position.
@@ -179,22 +259,22 @@ rtimelog del 1
 
 ---
 
-### Show configuration file path
-
-```bash
-rtimelog conf --print
-```
-
----
-
 ## 📊 Output example
 
 ```
 📅 Saved sessions for September 2025:
-  1: 2025-09-01 | Position O | Start 09:00 | Lunch 00:45 | End 17:30 | Expected 17:45 | Surplus -15 min
-  2: 2025-09-02 | Position R | Start 08:45 | Lunch 00:00 | End 17:15 | Expected 16:45 | Surplus +30 min
-  3: 2025-09-14 | Holiday
-```
+  1: 2025-09-01 | Remote           | Start 09:08 | Lunch 00:30 | End 17:30 | Expected 17:14 | Surplus  +16 min
+  2: 2025-09-04 | Office           | Start 09:35 | Lunch 00:30 | End 17:44 | Expected 17:41 | Surplus   +3 min
+  3: 2025-09-05 | Remote           | Start 09:11 | Lunch 00:30 | End 17:01 | Expected 17:17 | Surplus  -16 min
+  4: 2025-09-11 | Remote           | Start 08:08 | Lunch   -   | End 12:16 | Worked  4 h 08 min
+  5: 2025-09-17 | Office           | Start 09:42 | Lunch 00:30 | End 17:28 | Expected 17:48 | Surplus  -20 min
+  6: 2025-09-18 | Remote           | Start 10:50 | Lunch   -   | End   -   | Expected 18:56 | Surplus    -
+  7: 2025-09-19 | Holiday          | Start   -   | Lunch   -   | End   -   | Expected   -   | Surplus    - min
+  8: 2025-09-22 | Holiday          | Start   -   | Lunch   -   | End   -   | Expected   -   | Surplus    - min
+ 
+                                                                                     -------------------------
+                                                                                     Σ Total surplus:  -17 min
+ ```
 
 ---
 

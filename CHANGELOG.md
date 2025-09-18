@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.3.3] - 2025-09-18
+
+### Added
+
+- New internal DB versioning system to handle schema evolution.
+- New table schema_migrations to record each migration applied.
+- Automatic check and execution of pending migrations every time a command is run.
+- Automatic configuration file migration:
+    - Adds missing parameters min_duration_lunch_break (default 30)
+    - and max_duration_lunch_break (default 90)
+
+### Changed
+
+- The logic for expected exit time now uses configurable lunch break limits from the configuration file instead of
+  hardcoded values.
+
+---
+
 # [0.3.2] - 2025-09-17
 
 ### Added
