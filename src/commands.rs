@@ -92,12 +92,27 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
         // Initialize DB (creates tables) and run pending migrations
         db::init_db(&conn)?;
         println!("✅ Test database initialized at {}", db_path);
+        // Log the init operation (non-fatal)
+        if let Err(e) = db::ttlog(
+            &conn,
+            "init",
+            &format!("Test DB initialized at {}", db_path),
+        ) {
+            eprintln!("⚠️ Failed to write internal log: {}", e);
+        }
     } else {
         // Production mode: use the resolved db_path (do not reparse config from disk here)
         let conn = Connection::open(db_path)?;
         // Initialize DB (creates tables) and run pending migrations
         db::init_db(&conn)?;
         println!("✅ Database initialized at {}", db_path);
+        if let Err(e) = db::ttlog(
+            &conn,
+            "init",
+            &format!("Database initialized at {}", db_path),
+        ) {
+            eprintln!("⚠️ Failed to write internal log: {}", e);
+        }
     }
 
     Ok(())
@@ -109,6 +124,9 @@ pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
             Ok(rows) => {
                 if rows > 0 {
                     println!("🗑️  Session with ID {} deleted", id);
+                    if let Err(e) = db::ttlog(conn, "del", &format!("Deleted session id {}", id)) {
+                        eprintln!("⚠️ Failed to write internal log: {}", e);
+                    }
                 } else {
                     println!("⚠️  No session found with ID {}", id);
                 }
@@ -145,6 +163,9 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
         let lunch = (*lunch).or(*lunch_pos);
         let end = end.clone().or(end_pos.clone());
 
+        // Collect changes to log a single message at the end
+        let mut changes: Vec<String> = Vec::new();
+
         // Handle position
         if let Some(p) = pos.as_ref() {
             let p = p.trim().to_uppercase();
@@ -158,6 +179,7 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             db::upsert_position(conn, date, &p)?;
             let (pos_string, _) = describe_position(&p);
             println!("✅ Position {} set for {}", pos_string, date);
+            changes.push(format!("position={}", p));
         }
 
         // Handle start time
@@ -168,6 +190,7 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             }
             db::upsert_start(conn, date, s)?;
             println!("✅ Start time {} registered for {}", s, date);
+            changes.push(format!("start={}", s));
         }
 
         // Handle lunch
@@ -181,6 +204,7 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             }
             db::upsert_lunch(conn, date, l)?;
             println!("✅ Lunch {} min registered for {}", l, date);
+            changes.push(format!("lunch={}", l));
         }
 
         // Handle end time
@@ -191,11 +215,20 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             }
             db::upsert_end(conn, date, e)?;
             println!("✅ End time {} registered for {}", e, date);
+            changes.push(format!("end={}", e));
         }
 
         // Warn if no field provided
         if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
             eprintln!("⚠️ Please provide at least one of: position, start, lunch, end");
+        }
+
+        // Log the add operation if we recorded changes
+        if !changes.is_empty() {
+            let msg = format!("date={} | {}", date, changes.join(", "));
+            if let Err(e) = db::ttlog(conn, "add", &msg) {
+                eprintln!("⚠️ Failed to write internal log: {}", e);
+            }
         }
 
         // Recupera l'id dell'ultima sessione per la data fornita e invoca la stampa dettagliata

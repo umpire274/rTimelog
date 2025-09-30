@@ -5,6 +5,12 @@
 ### Added
 
 - New `log` subcommand with the `--print` option to display rows from the internal `log` table (date, function, message). Useful for diagnostics and auditing internal operations.
+- Application now records an entry into the internal `log` table on key user actions:
+  - `init`: logs when a database/config is initialized (message: "Database initialized at <path>" or "Test DB initialized at <path>").
+  - `add`: logs a concise summary of changes applied for the given date (message format: `date=YYYY-MM-DD | key=val, key=val, ...`, e.g. `date=2025-09-30 | start=09:00, lunch=30`).
+  - `del`: logs deletions (message: `Deleted session id <id>`).
+
+These log entries include a timestamp (ISO 8601) generated at insertion time and are intended for troubleshooting and audit.
 
 ---
 

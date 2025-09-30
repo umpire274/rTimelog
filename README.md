@@ -345,3 +345,61 @@ Available on the [GitHub Releases](https://github.com/umpire274/rTimelog/release
 
 MIT License.  
 See [LICENSE](LICENSE) for details.
+
+---
+
+### Log (internal)
+
+Print the rows from the internal `log` table (date, function, message):
+
+```bash
+rtimelog log --print
+```
+
+What is recorded
+
+- Columns: `id` (autoincrement), `date` (ISO 8601 timestamp), `function` (string), `message` (string).
+- When the application now writes to the `log` table:
+  - `init`: written when the database/config is initialized. Message examples:
+    - `Database initialized at C:\Users\...\rtimelog.sqlite`
+    - `Test DB initialized at C:\Users\...\AppData\Local\Temp\...` (when using `--test`).
+  - `add`: written when the `add` command applies changes for a date. Message format is concise and machine-friendly:
+    - `date=YYYY-MM-DD | key=val, key=val, ...`
+    - Example: `date=2025-09-30 | start=09:00, lunch=30`
+  - `del`: written when a session is deleted:
+    - Example: `Deleted session id 42`
+
+Behavioral notes
+
+- Each entry recorded by `db::ttlog` includes a timestamp (generated with `Utc::now().to_rfc3339()` — ISO 8601).
+- Writing to the `log` table is non-fatal: if the insert fails the command will still continue and a warning is printed to stderr.
+- The `log` table is intended for lightweight diagnostics and audit; messages are kept simple text to be human-readable but follow a predictable format for the `add` case.
+
+Examples
+
+1) Initialize a DB and inspect the log:
+
+```bash
+rtimelog --db /path/to/rtimelog.sqlite init
+rtimelog --db /path/to/rtimelog.sqlite log --print
+# Output example:
+#  1: 2025-09-30T12:34:56+00:00 | init | Database initialized at /path/to/rtimelog.sqlite
+```
+
+2) Add some data and inspect the log:
+
+```bash
+rtimelog --db /path/to/rtimelog.sqlite add 2025-09-30 O 09:00 30 17:00
+rtimelog --db /path/to/rtimelog.sqlite log --print
+# Possible log line:
+#  2: 2025-09-30T12:36:12+00:00 | add | date=2025-09-30 | start=09:00, lunch=30, end=17:00
+```
+
+3) Delete a session and inspect the log:
+
+```bash
+rtimelog --db /path/to/rtimelog.sqlite del 1
+rtimelog --db /path/to/rtimelog.sqlite log --print
+# Possible log line:
+#  3: 2025-09-30T12:40:00+00:00 | del | Deleted session id 1
+```
