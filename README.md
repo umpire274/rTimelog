@@ -288,6 +288,27 @@ This ensures that older databases remain compatible with newer versions of the a
 
 ---
 
+## Output formatting: month-end separator
+
+Starting from version 0.3.6, you can configure which character is used to draw the separator printed after the last day of each month in the `list` output.
+
+- Configuration key: `separator_char`
+- Default: `"-"`
+
+Example in `rtimelog.conf`:
+
+```yaml
+database: "/home/user/.rtimelog/rtimelog.sqlite"
+default_position: "O"
+min_duration_lunch_break: 30
+max_duration_lunch_break: 90
+separator_char: "#"
+```
+
+If `separator_char` is not present in the configuration file, the application migration will insert the default value automatically on first run.
+
+---
+
 ## 🧪 Tests
 
 Run all tests:

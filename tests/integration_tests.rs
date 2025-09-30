@@ -618,3 +618,39 @@ fn test_delete_nonexistent_session() {
         .success() // il comando non deve andare in errore
         .stdout(contains("No session found").or(contains("not found")));
 }
+
+#[test]
+fn test_separator_after_month_end() {
+    let db_path = setup_test_db("separator_month_end");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Add last day of September and first day of October
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "add", "2025-09-30", "O", "09:00", "30", "17:00"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "add", "2025-10-01", "O", "09:00", "30", "17:00"])
+        .assert()
+        .success();
+
+    // List and assert separator (25 '-' characters) is present after the 2025-09-30 line
+    let sep25 = "-".repeat(25);
+
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "list"])
+        .assert()
+        .success()
+        .stdout(contains("2025-09-30"))
+        .stdout(contains(sep25));
+}

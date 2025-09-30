@@ -13,6 +13,8 @@ pub struct Config {
     pub min_duration_lunch_break: i32,
     #[serde(default = "default_max_lunch")]
     pub max_duration_lunch_break: i32,
+    #[serde(default = "default_separator_char")]
+    pub separator_char: String,
 }
 
 fn default_min_lunch() -> i32 {
@@ -20,6 +22,9 @@ fn default_min_lunch() -> i32 {
 }
 fn default_max_lunch() -> i32 {
     90
+}
+fn default_separator_char() -> String {
+    "-".to_string()
 }
 
 impl Config {
@@ -58,6 +63,7 @@ impl Config {
                 min_work_duration: "8h".to_string(),
                 min_duration_lunch_break: 30,
                 max_duration_lunch_break: 90,
+                separator_char: default_separator_char(),
             }
         }
     }
@@ -85,6 +91,7 @@ impl Config {
             min_work_duration: "8h".to_string(),
             min_duration_lunch_break: 30,
             max_duration_lunch_break: 90,
+            separator_char: default_separator_char(),
         };
 
         // Write config file

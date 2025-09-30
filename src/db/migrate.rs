@@ -66,6 +66,11 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Add indexes on work_sessions.date and work_sessions.position",
         up: migrate_to_034_rel,
     },
+    Migration {
+        version: "20251001_0005_add_separator_char_to_config",
+        description: "Add separator_char default to configuration file if missing",
+        up: migrate_to_035_rel,
+    },
 ];
 
 /// Esegui solo le migrazioni non ancora applicate
@@ -287,5 +292,32 @@ fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
         "Added indexes idx_work_sessions_date and idx_work_sessions_position",
     )?;
     println!("✅ Created indexes for work_sessions (date, position)");
+    Ok(())
+}
+
+fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
+    // Ensure config file exists and add separator_char if missing
+    use serde_yaml::Value;
+    let path = Config::config_file();
+    if !path.exists() {
+        // nothing to do
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&path).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut value: Value = serde_yaml::from_str(&content).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    if let Some(map) = value.as_mapping_mut() {
+        let key = Value::String("separator_char".to_string());
+        if !map.contains_key(&key) {
+            map.insert(key.clone(), Value::String("-".to_string()));
+            // write back
+            let new_yaml = serde_yaml::to_string(&map).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            std::fs::write(&path, new_yaml).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            db::ttlog(conn, "migrate_to_035_rel", "Inserted separator_char into config file")?;
+            println!("✅ Config file updated with separator_char: {:?}", path);
+        }
+    }
+
     Ok(())
 }
