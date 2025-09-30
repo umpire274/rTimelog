@@ -1,5 +1,17 @@
 # Changelog
 
+# [0.3.5] - 2025-09-30
+
+### Added / Optimized
+
+- Performance: use cached prepared statements (`Connection::prepare_cached`) for repeated queries and upserts (`db::list_sessions`, `db::get_session`, `db::upsert_*`, `db::ttlog`) to reduce SQL compilation overhead and speed up repeated CLI invocations.
+
+### Changed
+
+- Internal refactor and performance optimizations; bumped version to `v0.3.5`.
+
+---
+
 # [0.3.4] - 2025-09-30
 
 ### Added
