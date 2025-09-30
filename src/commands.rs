@@ -104,12 +104,9 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn handle_del(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
+pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
     if let Commands::Del { id } = cmd {
-        let conn = Connection::open(db_path)?;
-        db::run_pending_migrations(&conn)?;
-
-        match db::delete_session(&conn, *id) {
+        match db::delete_session(conn, *id) {
             Ok(rows) => {
                 if rows > 0 {
                     println!("🗑️  Session with ID {} deleted", id);
@@ -124,7 +121,7 @@ pub fn handle_del(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
 }
 
 /// Handle the `add` command
-pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
+pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlite::Result<()> {
     if let Commands::Add {
         date,
         pos_pos,
@@ -137,9 +134,6 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         end,
     } = cmd
     {
-        let conn = Connection::open(db_path)?;
-        db::run_pending_migrations(&conn)?;
-
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
             eprintln!("❌ Invalid date format: {} (expected YYYY-MM-DD)", date);
@@ -162,7 +156,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 );
                 return Ok(());
             }
-            db::upsert_position(&conn, date, &p)?;
+            db::upsert_position(conn, date, &p)?;
             let (pos_string, _) = describe_position(&p);
             println!("✅ Position {} set for {}", pos_string, date);
         }
@@ -173,7 +167,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 eprintln!("❌ Invalid start time: {} (expected HH:MM)", s);
                 return Ok(());
             }
-            db::upsert_start(&conn, date, s)?;
+            db::upsert_start(conn, date, s)?;
             println!("✅ Start time {} registered for {}", s, date);
         }
 
@@ -186,7 +180,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 );
                 return Ok(());
             }
-            db::upsert_lunch(&conn, date, l)?;
+            db::upsert_lunch(conn, date, l)?;
             println!("✅ Lunch {} min registered for {}", l, date);
         }
 
@@ -196,7 +190,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 eprintln!("❌ Invalid end time: {} (expected HH:MM)", e);
                 return Ok(());
             }
-            db::upsert_end(&conn, date, e)?;
+            db::upsert_end(conn, date, e)?;
             println!("✅ End time {} registered for {}", e, date);
         }
 
@@ -206,13 +200,11 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         }
 
         // Recupera l'id dell'ultima sessione per la data fornita e invoca la stampa dettagliata
-        match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
-        {
+        match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1") {
             Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
                 Ok(last_id) => {
-                    let config = Config::load();
-                    // Chiama la versione con highlight per stampare solo quel record
-                    let _ = handle_list_with_highlight(None, None, db_path, &config, Some(last_id));
+                    // Use the provided connection and config to print the updated record
+                    let _ = handle_list_with_highlight(None, None, conn, config, Some(last_id));
                 }
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     // nessuna sessione da stampare
@@ -240,33 +232,32 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
 pub fn handle_list(
     period: Option<String>,
     pos: Option<String>,
-    db_path: &str,
+    conn: &Connection,
     config: &Config,
 ) -> rusqlite::Result<()> {
-    handle_list_with_highlight(period, pos, db_path, config, None)
+    handle_list_with_highlight(period, pos, conn, config, None)
 }
 
-/// Nuova versione: supporta la stampa con `highlight_id: Option<i32>`
+/// Nuova versione: supporta la stampa con `highlight_id: Option<i32`
 pub fn handle_list_with_highlight(
     period: Option<String>,
     pos: Option<String>,
-    db_path: &str,
+    conn: &Connection,
     config: &Config,
     highlight_id: Option<i32>,
 ) -> rusqlite::Result<()> {
-    let conn = Connection::open(db_path)?;
-    db::run_pending_migrations(&conn)?;
-
     // Normalize pos to uppercase
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
 
-    // If highlight_id is Some(id) -> recupera solo la session con quell'id (usando list_sessions e filtrando).
-    // Altrimenti mantieni il comportamento precedente.
+    // If highlight_id is Some(id) -> retrieve only that session (efficient single-row query).
+    // Otherwise retrieve the full list based on filters.
     let sessions = if let Some(id) = highlight_id {
-        let all = db::list_sessions(&conn, None, None)?;
-        all.into_iter().filter(|x| x.id == id).collect::<Vec<_>>()
+        match db::get_session(conn, id)? {
+            Some(s) => vec![s],
+            None => Vec::new(),
+        }
     } else {
-        db::list_sessions(&conn, period.as_deref(), pos_upper.as_deref())?
+        db::list_sessions(conn, period.as_deref(), pos_upper.as_deref())?
     };
 
     if sessions.is_empty() {
@@ -303,12 +294,13 @@ pub fn handle_list_with_highlight(
     }
 
     let mut total_surplus = 0;
+    // Parse work_minutes once to avoid repeated parsing inside the loop
+    let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
 
     for s in sessions {
         let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
-        let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
 
         if has_start && !has_end {
             // Only start → calculate expected end
