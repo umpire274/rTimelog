@@ -204,47 +204,102 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
             eprintln!("⚠️ Please provide at least one of: position, start, lunch, end");
         }
+
+        // Recupera l'id dell'ultima sessione per la data fornita e invoca la stampa dettagliata
+        match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
+        {
+            Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
+                Ok(last_id) => {
+                    let config = Config::load();
+                    // Chiama la versione con highlight per stampare solo quel record
+                    let _ = handle_list_with_highlight(None, None, db_path, &config, Some(last_id));
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    // nessuna sessione da stampare
+                }
+                Err(e) => {
+                    eprintln!(
+                        "❌ Errore durante il recupero dell'id della sessione: {}",
+                        e
+                    );
+                }
+            },
+            Err(e) => {
+                eprintln!(
+                    "❌ Impossibile preparare la query per recuperare l'id: {}",
+                    e
+                );
+            }
+        }
     }
 
     Ok(())
 }
 
-/// Handle the `list` command
+/// Compatibile: wrapper che mantiene la firma esistente e chiama la versione con highlight = None
 pub fn handle_list(
     period: Option<String>,
     pos: Option<String>,
     db_path: &str,
     config: &Config,
 ) -> rusqlite::Result<()> {
+    handle_list_with_highlight(period, pos, db_path, config, None)
+}
+
+/// Nuova versione: supporta la stampa con `highlight_id: Option<i32>`
+pub fn handle_list_with_highlight(
+    period: Option<String>,
+    pos: Option<String>,
+    db_path: &str,
+    config: &Config,
+    highlight_id: Option<i32>,
+) -> rusqlite::Result<()> {
     let conn = Connection::open(db_path)?;
     db::run_pending_migrations(&conn)?;
 
     // Normalize pos to uppercase
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
-    let sessions = db::list_sessions(&conn, period.as_deref(), pos_upper.as_deref())?;
+
+    // If highlight_id is Some(id) -> recupera solo la session con quell'id (usando list_sessions e filtrando).
+    // Altrimenti mantieni il comportamento precedente.
+    let sessions = if let Some(id) = highlight_id {
+        let all = db::list_sessions(&conn, None, None)?;
+        all.into_iter().filter(|x| x.id == id).collect::<Vec<_>>()
+    } else {
+        db::list_sessions(&conn, period.as_deref(), pos_upper.as_deref())?
+    };
 
     if sessions.is_empty() {
-        println!("⚠️  No recorded sessions found");
+        if highlight_id.is_some() {
+            println!("⚠️  No recorded session found with the requested id");
+        } else {
+            println!("⚠️  No recorded sessions found");
+        }
         return Ok(());
     }
 
-    if let Some(p) = period {
-        if p.len() == 4 {
-            println!("📅 Saved sessions for year {}:", p);
-        } else if p.len() == 7 {
-            let parts: Vec<&str> = p.split('-').collect();
-            let year = parts[0];
-            let month = parts[1];
-            println!(
-                "📅 Saved sessions for {} {}:",
-                logic::month_name(month),
-                year
-            );
+    if highlight_id.is_none() {
+        if let Some(p) = period {
+            if p.len() == 4 {
+                println!("📅 Saved sessions for year {}:", p);
+            } else if p.len() == 7 {
+                let parts: Vec<&str> = p.split('-').collect();
+                let year = parts[0];
+                let month = parts[1];
+                println!(
+                    "📅 Saved sessions for {} {}:",
+                    logic::month_name(month),
+                    year
+                );
+            }
+        } else if let Some(p) = pos.as_deref() {
+            println!("📅 Saved sessions for position {}:", p);
+        } else {
+            println!("📅 Saved sessions:");
         }
-    } else if let Some(p) = pos.as_deref() {
-        println!("📅 Saved sessions for position {}:", p);
     } else {
-        println!("📅 Saved sessions:");
+        // When highlighting a single record (called from handle_add), avoid printing any header
+        // to output exclusively the single record.
     }
 
     let mut total_surplus = 0;
@@ -253,7 +308,7 @@ pub fn handle_list(
         let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
-        let work_minutes = utils::parse_work_duration_to_minutes(&Config::load().min_work_duration);
+        let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
 
         if has_start && !has_end {
             // Only start → calculate expected end
@@ -265,7 +320,6 @@ pub fn handle_list(
             } else {
                 "-".to_string()
             };
-            // Forza la larghezza a 5 caratteri, allineato a destra
             let lunch_fmt = format!("{:^5}", lunch_str);
 
             let end_color = if !s.end.is_empty() {
@@ -278,7 +332,6 @@ pub fn handle_list(
             } else {
                 "-".to_string()
             };
-            // Forza la larghezza a 5 caratteri, allineato a destra
             let end_fmt = format!("{:^5}", end_str);
 
             println!(
@@ -333,8 +386,6 @@ pub fn handle_list(
                 } else {
                     "-".to_string()
                 };
-
-                // Forza la larghezza a 5 caratteri, allineato a destra
                 let lunch_fmt = format!("{:^5}", lunch_str);
 
                 println!(
@@ -351,12 +402,8 @@ pub fn handle_list(
                     formatted_surplus
                 );
             } else {
-                // Case without lunch (work entirely outside the window)
                 let duration = end_time - start_time;
-                let lunch_str = "-".to_string();
-
-                // Forza la larghezza a 5 caratteri, allineato a destra
-                let lunch_fmt = format!("{:^5}", lunch_str);
+                let lunch_fmt = format!("{:^5}", "-".to_string());
 
                 println!(
                     "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
@@ -378,10 +425,8 @@ pub fn handle_list(
                 "-".to_string()
             };
 
-            // Forza la larghezza a 5 caratteri, allineato a destra
             let lunch_fmt = format!("{:^5}", lunch_str);
 
-            // Incomplete information
             println!(
                 "{:>3}: {} | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
                 s.id,
@@ -397,27 +442,29 @@ pub fn handle_list(
         }
     }
 
-    println!();
-    print_separator('-', 25, 110);
+    if highlight_id.is_none() {
+        println!();
+        print_separator('-', 25, 110);
 
-    if total_surplus != 0 {
-        let color_code = if total_surplus < 0 {
-            "\x1b[31m" // rosso
+        if total_surplus != 0 {
+            let color_code = if total_surplus < 0 {
+                "\x1b[31m" // rosso
+            } else {
+                "\x1b[32m" // verde
+            };
+
+            let formatted_total = format!("{:+}", total_surplus);
+
+            println!(
+                "{:>119}",
+                format!(
+                    "Σ Total surplus: {}{:>4} min\x1b[0m",
+                    color_code, formatted_total
+                ),
+            );
         } else {
-            "\x1b[32m" // verde
-        };
-
-        let formatted_total = format!("{:+}", total_surplus);
-
-        println!(
-            "{:>119}",
-            format!(
-                "Σ Total surplus: {}{:>4} min\x1b[0m",
-                color_code, formatted_total
-            ),
-        );
-    } else {
-        println!("{:>119}", format!("Σ Total surplus: {:>4} min", 0));
+            println!("{:>119}", format!("Σ Total surplus: {:>4} min", 0));
+        }
     }
 
     Ok(())
