@@ -200,7 +200,8 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
         }
 
         // Recupera l'id dell'ultima sessione per la data fornita e invoca la stampa dettagliata
-        match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1") {
+        match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
+        {
             Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
                 Ok(last_id) => {
                     // Use the provided connection and config to print the updated record
@@ -250,7 +251,7 @@ pub fn handle_list_with_highlight(
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
 
     // If highlight_id is Some(id) -> retrieve only that session (efficient single-row query).
-    // Otherwise retrieve the full list based on filters.
+    // Otherwise, retrieve the full list based on filters.
     let sessions = if let Some(id) = highlight_id {
         match db::get_session(conn, id)? {
             Some(s) => vec![s],
