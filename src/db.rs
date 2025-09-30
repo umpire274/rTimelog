@@ -135,7 +135,8 @@ pub fn upsert_position(conn: &Connection, date: &str, pos: &str) -> Result<()> {
 
 /// Insert or update the start time (HH:MM) for a given date.
 pub fn upsert_start(conn: &Connection, date: &str, start: &str) -> Result<()> {
-    let mut stmt = conn.prepare_cached("UPDATE work_sessions SET start_time = ?1 WHERE date = ?2")?;
+    let mut stmt =
+        conn.prepare_cached("UPDATE work_sessions SET start_time = ?1 WHERE date = ?2")?;
     let rows = stmt.execute(params![start, date])?;
     if rows == 0 {
         let mut ins = conn.prepare_cached(
@@ -149,7 +150,8 @@ pub fn upsert_start(conn: &Connection, date: &str, start: &str) -> Result<()> {
 
 /// Insert or update the lunch break (minutes) for a given date.
 pub fn upsert_lunch(conn: &Connection, date: &str, lunch: i32) -> Result<()> {
-    let mut stmt = conn.prepare_cached("UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2")?;
+    let mut stmt =
+        conn.prepare_cached("UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2")?;
     let rows = stmt.execute(params![lunch, date])?;
     if rows == 0 {
         let mut ins = conn.prepare_cached(
@@ -177,7 +179,8 @@ pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
 
 pub fn ttlog(conn: &Connection, function: &str, message: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339(); // ISO 8601
-    let mut stmt = conn.prepare_cached("INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)")?;
+    let mut stmt =
+        conn.prepare_cached("INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)")?;
     stmt.execute(params![&now, function, message])?;
     Ok(())
 }

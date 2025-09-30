@@ -633,13 +633,31 @@ fn test_separator_after_month_end() {
     // Add last day of September and first day of October
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "add", "2025-09-30", "O", "09:00", "30", "17:00"])
+        .args([
+            "--db",
+            &db_path,
+            "add",
+            "2025-09-30",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
         .assert()
         .success();
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "add", "2025-10-01", "O", "09:00", "30", "17:00"])
+        .args([
+            "--db",
+            &db_path,
+            "add",
+            "2025-10-01",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
         .assert()
         .success();
 

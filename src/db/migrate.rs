@@ -241,7 +241,9 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
             );
         }
     } else {
-        println!("⚠️  Config file exists but is not a mapping; skipping config migration (20250919_0003)");
+        println!(
+            "⚠️  Config file exists but is not a mapping; skipping config migration (20250919_0003)"
+        );
         return Ok(());
     }
 
@@ -272,7 +274,8 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
 fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
     // Create indexes to speed up queries filtering by date and position, but only if the
     // `work_sessions` table exists in the database (avoids 'no such table' errors).
-    let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
+    let mut stmt =
+        conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
     let exists: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
     if exists.is_some() {
         conn.execute_batch(
@@ -303,17 +306,25 @@ fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(&path).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    let mut value: Value = serde_yaml::from_str(&content).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut value: Value = serde_yaml::from_str(&content)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
     if let Some(map) = value.as_mapping_mut() {
         let key = Value::String("separator_char".to_string());
         if !map.contains_key(&key) {
             map.insert(key.clone(), Value::String("-".to_string()));
             // write back
-            let new_yaml = serde_yaml::to_string(&map).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            std::fs::write(&path, new_yaml).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            db::ttlog(conn, "migrate_to_035_rel", "Inserted separator_char into config file")?;
+            let new_yaml = serde_yaml::to_string(&map)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            std::fs::write(&path, new_yaml)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            db::ttlog(
+                conn,
+                "migrate_to_035_rel",
+                "Inserted separator_char into config file",
+            )?;
             println!("✅ Config file updated with separator_char: {:?}", path);
         }
     }

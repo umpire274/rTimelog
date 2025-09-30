@@ -298,11 +298,7 @@ pub fn handle_list_with_highlight(
     // Parse work_minutes once to avoid repeated parsing inside the loop
     let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
     // Separator character configurable from config (take first char, fallback to '-')
-    let sep_ch = config
-        .separator_char
-        .chars()
-        .next()
-        .unwrap_or('-');
+    let sep_ch = config.separator_char.chars().next().unwrap_or('-');
 
     for s in sessions {
         let (pos_string, pos_color) = describe_position(s.position.as_str());
