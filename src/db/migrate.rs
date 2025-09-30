@@ -61,10 +61,40 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Add into config file two new parameters: min_duration_lunch_break=30 e max_duration_lunch_break=90",
         up: migrate_to_033_rel,
     },
+    Migration {
+        version: "20250930_0004_add_work_sessions_indexes",
+        description: "Add indexes on work_sessions.date and work_sessions.position",
+        up: migrate_to_034_rel,
+    },
+    Migration {
+        version: "20251001_0005_add_separator_char_to_config",
+        description: "Add separator_char default to configuration file if missing",
+        up: migrate_to_035_rel,
+    },
 ];
 
 /// Esegui solo le migrazioni non ancora applicate
 pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
+    // Ensure base tables exist (defensive): create work_sessions and log if missing so migrations can reference them.
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS work_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            position TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C')),
+            start_time TEXT NOT NULL DEFAULT '',
+            lunch_break INTEGER NOT NULL DEFAULT 0,
+            end_time TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            function TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
+        ",
+    )?;
+
     ensure_migrations_table(conn)?;
 
     let applied = applied_versions(conn)?;
@@ -196,27 +226,28 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
         )
     })?;
 
-    let obj = value.as_mapping_mut().ok_or_else(|| {
-        Error::SqliteFailure(
-            ffi::Error::new(1),
-            Some("Invalid YAML structure".to_string()),
-        )
-    })?;
-
-    if !obj.contains_key(Value::String("min_duration_lunch_break".to_string())) {
-        obj.insert(
-            Value::String("min_duration_lunch_break".to_string()),
-            Value::Number(30.into()),
+    // If the YAML root is not a mapping (unexpected), skip the migration instead of failing.
+    if let Some(obj) = value.as_mapping_mut() {
+        if !obj.contains_key(Value::String("min_duration_lunch_break".to_string())) {
+            obj.insert(
+                Value::String("min_duration_lunch_break".to_string()),
+                Value::Number(30.into()),
+            );
+        }
+        if !obj.contains_key(Value::String("max_duration_lunch_break".to_string())) {
+            obj.insert(
+                Value::String("max_duration_lunch_break".to_string()),
+                Value::Number(90.into()),
+            );
+        }
+    } else {
+        println!(
+            "⚠️  Config file exists but is not a mapping; skipping config migration (20250919_0003)"
         );
-    }
-    if !obj.contains_key(Value::String("max_duration_lunch_break".to_string())) {
-        obj.insert(
-            Value::String("max_duration_lunch_break".to_string()),
-            Value::Number(90.into()),
-        );
+        return Ok(());
     }
 
-    let new_yaml = serde_yaml::to_string(&obj).map_err(|e| {
+    let new_yaml = serde_yaml::to_string(&value).map_err(|e| {
         Error::SqliteFailure(
             ffi::Error::new(1),
             Some(format!("Failed to serialize config: {}", e)),
@@ -236,6 +267,67 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
         "Migration configuration file completed.",
     )?;
     println!("✅ Config file migrated: {:?}", path);
+
+    Ok(())
+}
+
+fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
+    // Create indexes to speed up queries filtering by date and position, but only if the
+    // `work_sessions` table exists in the database (avoids 'no such table' errors).
+    let mut stmt =
+        conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
+    let exists: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
+    if exists.is_some() {
+        conn.execute_batch(
+            "
+            CREATE INDEX IF NOT EXISTS idx_work_sessions_date ON work_sessions(date);
+            CREATE INDEX IF NOT EXISTS idx_work_sessions_position ON work_sessions(position);
+            ",
+        )?;
+    } else {
+        println!("⚠️  work_sessions table not found; skipping index creation");
+    }
+
+    db::ttlog(
+        conn,
+        "migrate_to_034_rel",
+        "Added indexes idx_work_sessions_date and idx_work_sessions_position",
+    )?;
+    println!("✅ Created indexes for work_sessions (date, position)");
+    Ok(())
+}
+
+fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
+    // Ensure config file exists and add separator_char if missing
+    use serde_yaml::Value;
+    let path = Config::config_file();
+    if !path.exists() {
+        // nothing to do
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut value: Value = serde_yaml::from_str(&content)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    if let Some(map) = value.as_mapping_mut() {
+        let key = Value::String("separator_char".to_string());
+        if !map.contains_key(&key) {
+            map.insert(key.clone(), Value::String("-".to_string()));
+            // write back
+            let new_yaml = serde_yaml::to_string(&map)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            std::fs::write(&path, new_yaml)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            db::ttlog(
+                conn,
+                "migrate_to_035_rel",
+                "Inserted separator_char into config file",
+            )?;
+            println!("✅ Config file updated with separator_char: {:?}", path);
+        }
+    }
 
     Ok(())
 }

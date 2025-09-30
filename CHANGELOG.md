@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.3.5] - 2025-09-30
+
+### Added / Optimized
+
+- Performance: use cached prepared statements (`Connection::prepare_cached`) for repeated queries and upserts (`db::list_sessions`, `db::get_session`, `db::upsert_*`, `db::ttlog`) to reduce SQL compilation overhead and speed up repeated CLI invocations.
+- Migration to add new configuration parameter `separator_char` to the config file if missing; allows customizing the character used for month-end separators in list output.
+- Integration test `test_separator_after_month_end` validating that a separator is printed after the month's last day.
+
+### Changed
+
+- Internal refactor and performance optimizations; bumped version to `v0.3.5`.
+- Documentation updated: `README.md` now documents the `separator_char` configuration option and how to override it.
+
+### Fixed
+
+- Fixed a bug in the configuration migration (`migrate_to_033_rel`) where a variable was referenced out of scope, causing a compilation error in some environments; the migration now correctly serializes the updated configuration and writes it back.
+
+---
+
 # [0.3.4] - 2025-09-30
 
 ### Added

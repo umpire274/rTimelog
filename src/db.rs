@@ -98,7 +98,8 @@ pub fn list_sessions(
 
     query.push_str(" ORDER BY date ASC");
 
-    let mut stmt = conn.prepare(&query)?;
+    // Use cached prepared statement to avoid recompiling the SQL on repeated calls
+    let mut stmt = conn.prepare_cached(&query)?;
     let params_refs: Vec<&dyn ToSql> = params.iter().map(|s| s as &dyn ToSql).collect();
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(WorkSession {
@@ -120,80 +121,73 @@ pub fn list_sessions(
 
 /// Insert or update the position (A=office, R=remote) for a given date.
 pub fn upsert_position(conn: &Connection, date: &str, pos: &str) -> Result<()> {
-    let rows = conn.execute(
-        "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
-        (pos, date),
-    )?;
+    let mut stmt = conn.prepare_cached("UPDATE work_sessions SET position = ?1 WHERE date = ?2")?;
+    let rows = stmt.execute(params![pos, date])?;
     if rows == 0 {
-        conn.execute(
+        let mut ins = conn.prepare_cached(
             "INSERT INTO work_sessions (date, position, start_time, lunch_break, end_time)
              VALUES (?1, ?2, '', 0, '')",
-            (date, pos),
         )?;
+        ins.execute(params![date, pos])?;
     }
     Ok(())
 }
 
 /// Insert or update the start time (HH:MM) for a given date.
 pub fn upsert_start(conn: &Connection, date: &str, start: &str) -> Result<()> {
-    let rows = conn.execute(
-        "UPDATE work_sessions SET start_time = ?1 WHERE date = ?2",
-        (start, date),
-    )?;
+    let mut stmt =
+        conn.prepare_cached("UPDATE work_sessions SET start_time = ?1 WHERE date = ?2")?;
+    let rows = stmt.execute(params![start, date])?;
     if rows == 0 {
-        conn.execute(
+        let mut ins = conn.prepare_cached(
             "INSERT INTO work_sessions (date, position, start_time, lunch_break, end_time)
              VALUES (?1, 'A', ?2, 0, '')",
-            (date, start),
         )?;
+        ins.execute(params![date, start])?;
     }
     Ok(())
 }
 
 /// Insert or update the lunch break (minutes) for a given date.
 pub fn upsert_lunch(conn: &Connection, date: &str, lunch: i32) -> Result<()> {
-    let rows = conn.execute(
-        "UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2",
-        (lunch, date),
-    )?;
+    let mut stmt =
+        conn.prepare_cached("UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2")?;
+    let rows = stmt.execute(params![lunch, date])?;
     if rows == 0 {
-        conn.execute(
+        let mut ins = conn.prepare_cached(
             "INSERT INTO work_sessions (date, position, start_time, lunch_break, end_time)
              VALUES (?1, 'A', '', ?2, '')",
-            (date, lunch),
         )?;
+        ins.execute(params![date, lunch])?;
     }
     Ok(())
 }
 
 /// Insert or update the end time (HH:MM) for a given date.
 pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
-    let rows = conn.execute(
-        "UPDATE work_sessions SET end_time = ?1 WHERE date = ?2",
-        (end, date),
-    )?;
+    let mut stmt = conn.prepare_cached("UPDATE work_sessions SET end_time = ?1 WHERE date = ?2")?;
+    let rows = stmt.execute(params![end, date])?;
     if rows == 0 {
-        conn.execute(
+        let mut ins = conn.prepare_cached(
             "INSERT INTO work_sessions (date, position, start_time, lunch_break, end_time)
              VALUES (?1, 'A', '', 0, ?2)",
-            (date, end),
         )?;
+        ins.execute(params![date, end])?;
     }
     Ok(())
 }
 
 pub fn ttlog(conn: &Connection, function: &str, message: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339(); // ISO 8601
-    conn.execute(
-        "INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)",
-        (&now, function, message),
-    )?;
+    let mut stmt =
+        conn.prepare_cached("INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)")?;
+    stmt.execute(params![&now, function, message])?;
     Ok(())
 }
 
 /// Retrieve a single work session by id
 pub fn get_session(conn: &Connection, id: i32) -> Result<Option<WorkSession>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, date, position, start_time, lunch_break, end_time FROM work_sessions WHERE id = ?1",
     )?;
 

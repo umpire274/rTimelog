@@ -129,13 +129,14 @@ fn main() -> rusqlite::Result<()> {
         return commands::handle_init(&cli, &db_path);
     }
 
-    // For other commands, open a single shared connection, set useful PRAGMA and run migrations once
+    // For other commands, open a single shared connection, set useful PRAGMA and ensure DB is initialized (creates
+    // base tables and runs pending migrations).
     let conn = Connection::open(&db_path)?;
     // Improve write concurrency and performance on SQLite
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
     let _ = conn.pragma_update(None, "synchronous", "NORMAL");
-    // Ensure DB schema is up-to-date once
-    db::run_pending_migrations(&conn)?;
+    // Ensure base tables exist and run pending migrations via init_db
+    db::init_db(&conn)?;
 
     match &cli.command {
         Commands::Conf { .. } => commands::handle_conf(&cli.command),
