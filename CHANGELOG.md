@@ -13,6 +13,10 @@
 - Internal refactor and performance optimizations; bumped version to `v0.3.5`.
 - Documentation updated: `README.md` now documents the `separator_char` configuration option and how to override it.
 
+### Fixed
+
+- Fixed a bug in the configuration migration (`migrate_to_033_rel`) where a variable was referenced out of scope, causing a compilation error in some environments; the migration now correctly serializes the updated configuration and writes it back.
+
 ---
 
 # [0.3.4] - 2025-09-30

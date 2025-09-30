@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime, ParseError};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, ParseError};
 
 /// Convert a `NaiveDate` into an ISO 8601 string (YYYY-MM-DD)
 pub fn date2iso(date: &NaiveDate) -> String {
@@ -100,5 +100,28 @@ pub fn describe_position(pos: &str) -> (String, String) {
             let label = pos.to_string();
             (label.clone(), "\x1b[0m".to_string()) // fallback senza colore
         }
+    }
+}
+
+/// Return true if the given date (YYYY-MM-DD) is the last day of its month.
+/// Returns false if the date cannot be parsed.
+pub fn is_last_day_of_month(date_str: &str) -> bool {
+    match NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        Ok(d) => {
+            // compute first day of next month
+            let (y, m) = (d.year(), d.month());
+            let next_month_first = if m == 12 {
+                NaiveDate::from_ymd_opt(y + 1, 1, 1)
+            } else {
+                NaiveDate::from_ymd_opt(y, m + 1, 1)
+            };
+            if let Some(next_first) = next_month_first {
+                let last_day = next_first - chrono::Duration::days(1);
+                d == last_day
+            } else {
+                false
+            }
+        }
+        Err(_) => false,
     }
 }

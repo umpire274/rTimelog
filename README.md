@@ -10,13 +10,12 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in v0.3.4
+## What's new in v0.3.5
 
-- The `add` command now prints only the record that was inserted or updated, making confirmation immediate and
-  concise.
-- Project includes configuration files for GitHub Copilot: `copilot-custom.json` (machine-readable) and
-  `copilot-custom.md` (human-readable documentation).
-- Version bumped to `v0.3.4` and dependencies updated.
+- Fixed: resolved a compilation issue in the configuration migration that could cause a build failure on some platforms; the config migration now correctly serializes and writes back added keys.
+- The `add` command now prints only the record that was inserted or updated, making confirmation immediate and concise.
+- Project includes configuration files for GitHub Copilot: `copilot-custom.json` (machine-readable) and `copilot-custom.md` (human-readable documentation).
+- Documentation updated: README.md now documents the `separator_char` configuration option and how to override it.
 
 ---
 
@@ -290,7 +289,7 @@ This ensures that older databases remain compatible with newer versions of the a
 
 ## Output formatting: month-end separator
 
-Starting from version 0.3.6, you can configure which character is used to draw the separator printed after the last day of each month in the `list` output.
+Starting from version 0.3.5, you can configure which character is used to draw the separator printed after the last day of each month in the `list` output.
 
 - Configuration key: `separator_char`
 - Default: `"-"`

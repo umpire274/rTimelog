@@ -226,27 +226,26 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
         )
     })?;
 
-    let obj = value.as_mapping_mut().ok_or_else(|| {
-        Error::SqliteFailure(
-            ffi::Error::new(1),
-            Some("Invalid YAML structure".to_string()),
-        )
-    })?;
-
-    if !obj.contains_key(Value::String("min_duration_lunch_break".to_string())) {
-        obj.insert(
-            Value::String("min_duration_lunch_break".to_string()),
-            Value::Number(30.into()),
-        );
+    // If the YAML root is not a mapping (unexpected), skip the migration instead of failing.
+    if let Some(obj) = value.as_mapping_mut() {
+        if !obj.contains_key(Value::String("min_duration_lunch_break".to_string())) {
+            obj.insert(
+                Value::String("min_duration_lunch_break".to_string()),
+                Value::Number(30.into()),
+            );
+        }
+        if !obj.contains_key(Value::String("max_duration_lunch_break".to_string())) {
+            obj.insert(
+                Value::String("max_duration_lunch_break".to_string()),
+                Value::Number(90.into()),
+            );
+        }
+    } else {
+        println!("⚠️  Config file exists but is not a mapping; skipping config migration (20250919_0003)");
+        return Ok(());
     }
-    if !obj.contains_key(Value::String("max_duration_lunch_break".to_string())) {
-        obj.insert(
-            Value::String("max_duration_lunch_break".to_string()),
-            Value::Number(90.into()),
-        );
-    }
 
-    let new_yaml = serde_yaml::to_string(&obj).map_err(|e| {
+    let new_yaml = serde_yaml::to_string(&value).map_err(|e| {
         Error::SqliteFailure(
             ffi::Error::new(1),
             Some(format!("Failed to serialize config: {}", e)),

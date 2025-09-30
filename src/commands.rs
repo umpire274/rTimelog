@@ -297,6 +297,12 @@ pub fn handle_list_with_highlight(
     let mut total_surplus = 0;
     // Parse work_minutes once to avoid repeated parsing inside the loop
     let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
+    // Separator character configurable from config (take first char, fallback to '-')
+    let sep_ch = config
+        .separator_char
+        .chars()
+        .next()
+        .unwrap_or('-');
 
     for s in sessions {
         let (pos_string, pos_color) = describe_position(s.position.as_str());
@@ -341,6 +347,10 @@ pub fn handle_list_with_highlight(
                 expected.format("%H:%M"),
                 "-",
             );
+            // If this date is the last day of the month, print a separator after it
+            if utils::is_last_day_of_month(&s.date) {
+                print_separator(sep_ch, 25, 110);
+            }
         } else if has_start && has_end {
             let start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
             let end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
@@ -394,6 +404,9 @@ pub fn handle_list_with_highlight(
                     color_code,
                     formatted_surplus
                 );
+                if utils::is_last_day_of_month(&s.date) {
+                    print_separator(sep_ch, 25, 110);
+                }
             } else {
                 let duration = end_time - start_time;
                 let lunch_fmt = format!("{:^5}", "-".to_string());
@@ -410,6 +423,9 @@ pub fn handle_list_with_highlight(
                     duration.num_hours(),
                     duration.num_minutes() % 60
                 );
+                if utils::is_last_day_of_month(&s.date) {
+                    print_separator(sep_ch, 25, 110);
+                }
             }
         } else {
             let lunch_str = if s.lunch > 0 {
@@ -432,12 +448,15 @@ pub fn handle_list_with_highlight(
                 "-",
                 "-",
             );
+            if utils::is_last_day_of_month(&s.date) {
+                print_separator(sep_ch, 25, 110);
+            }
         }
     }
 
     if highlight_id.is_none() {
         println!();
-        print_separator('-', 25, 110);
+        print_separator(sep_ch, 25, 110);
 
         if total_surplus != 0 {
             let color_code = if total_surplus < 0 {
