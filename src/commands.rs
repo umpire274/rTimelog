@@ -89,14 +89,14 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     if cli.test {
         // In test mode, use db_path directly
         let conn = Connection::open(db_path)?;
-        db::run_pending_migrations(&conn)?;
+        // Initialize DB (creates tables) and run pending migrations
         db::init_db(&conn)?;
         println!("✅ Test database initialized at {}", db_path);
     } else {
         // Production mode: reload config
         let config = Config::load();
         let conn = Connection::open(&config.database)?;
-        db::run_pending_migrations(&conn)?;
+        // Initialize DB (creates tables) and run pending migrations
         db::init_db(&conn)?;
         println!("✅ Database initialized at {}", config.database);
     }

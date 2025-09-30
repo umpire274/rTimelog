@@ -61,10 +61,35 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Add into config file two new parameters: min_duration_lunch_break=30 e max_duration_lunch_break=90",
         up: migrate_to_033_rel,
     },
+    Migration {
+        version: "20250930_0004_add_work_sessions_indexes",
+        description: "Add indexes on work_sessions.date and work_sessions.position",
+        up: migrate_to_034_rel,
+    },
 ];
 
 /// Esegui solo le migrazioni non ancora applicate
 pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
+    // Ensure base tables exist (defensive): create work_sessions and log if missing so migrations can reference them.
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS work_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            position TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C')),
+            start_time TEXT NOT NULL DEFAULT '',
+            lunch_break INTEGER NOT NULL DEFAULT 0,
+            end_time TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            function TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
+        ",
+    )?;
+
     ensure_migrations_table(conn)?;
 
     let applied = applied_versions(conn)?;
@@ -237,5 +262,30 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
     )?;
     println!("✅ Config file migrated: {:?}", path);
 
+    Ok(())
+}
+
+fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
+    // Create indexes to speed up queries filtering by date and position, but only if the
+    // `work_sessions` table exists in the database (avoids 'no such table' errors).
+    let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
+    let exists: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
+    if exists.is_some() {
+        conn.execute_batch(
+            "
+            CREATE INDEX IF NOT EXISTS idx_work_sessions_date ON work_sessions(date);
+            CREATE INDEX IF NOT EXISTS idx_work_sessions_position ON work_sessions(position);
+            ",
+        )?;
+    } else {
+        println!("⚠️  work_sessions table not found; skipping index creation");
+    }
+
+    db::ttlog(
+        conn,
+        "migrate_to_034_rel",
+        "Added indexes idx_work_sessions_date and idx_work_sessions_position",
+    )?;
+    println!("✅ Created indexes for work_sessions (date, position)");
     Ok(())
 }
