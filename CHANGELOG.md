@@ -1,5 +1,13 @@
 # Changelog
 
+# [0.3.6] - 2025-09-30
+
+### Added
+
+- New `log` subcommand with the `--print` option to display rows from the internal `log` table (date, function, message). Useful for diagnostics and auditing internal operations.
+
+---
+
 # [0.3.5] - 2025-09-30
 
 ### Added / Optimized
