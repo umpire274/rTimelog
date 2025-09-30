@@ -104,12 +104,9 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn handle_del(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
+pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
     if let Commands::Del { id } = cmd {
-        let conn = Connection::open(db_path)?;
-        db::run_pending_migrations(&conn)?;
-
-        match db::delete_session(&conn, *id) {
+        match db::delete_session(conn, *id) {
             Ok(rows) => {
                 if rows > 0 {
                     println!("🗑️  Session with ID {} deleted", id);
@@ -124,7 +121,7 @@ pub fn handle_del(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
 }
 
 /// Handle the `add` command
-pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
+pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlite::Result<()> {
     if let Commands::Add {
         date,
         pos_pos,
@@ -137,9 +134,6 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         end,
     } = cmd
     {
-        let conn = Connection::open(db_path)?;
-        db::run_pending_migrations(&conn)?;
-
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
             eprintln!("❌ Invalid date format: {} (expected YYYY-MM-DD)", date);
@@ -162,7 +156,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 );
                 return Ok(());
             }
-            db::upsert_position(&conn, date, &p)?;
+            db::upsert_position(conn, date, &p)?;
             let (pos_string, _) = describe_position(&p);
             println!("✅ Position {} set for {}", pos_string, date);
         }
@@ -173,7 +167,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 eprintln!("❌ Invalid start time: {} (expected HH:MM)", s);
                 return Ok(());
             }
-            db::upsert_start(&conn, date, s)?;
+            db::upsert_start(conn, date, s)?;
             println!("✅ Start time {} registered for {}", s, date);
         }
 
@@ -186,7 +180,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 );
                 return Ok(());
             }
-            db::upsert_lunch(&conn, date, l)?;
+            db::upsert_lunch(conn, date, l)?;
             println!("✅ Lunch {} min registered for {}", l, date);
         }
 
@@ -196,7 +190,7 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
                 eprintln!("❌ Invalid end time: {} (expected HH:MM)", e);
                 return Ok(());
             }
-            db::upsert_end(&conn, date, e)?;
+            db::upsert_end(conn, date, e)?;
             println!("✅ End time {} registered for {}", e, date);
         }
 
@@ -204,56 +198,110 @@ pub fn handle_add(cmd: &Commands, db_path: &str) -> rusqlite::Result<()> {
         if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
             eprintln!("⚠️ Please provide at least one of: position, start, lunch, end");
         }
+
+        // Recupera l'id dell'ultima sessione per la data fornita e invoca la stampa dettagliata
+        match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
+        {
+            Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
+                Ok(last_id) => {
+                    // Use the provided connection and config to print the updated record
+                    let _ = handle_list_with_highlight(None, None, conn, config, Some(last_id));
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    // nessuna sessione da stampare
+                }
+                Err(e) => {
+                    eprintln!(
+                        "❌ Errore durante il recupero dell'id della sessione: {}",
+                        e
+                    );
+                }
+            },
+            Err(e) => {
+                eprintln!(
+                    "❌ Impossibile preparare la query per recuperare l'id: {}",
+                    e
+                );
+            }
+        }
     }
 
     Ok(())
 }
 
-/// Handle the `list` command
+/// Compatibile: wrapper che mantiene la firma esistente e chiama la versione con highlight = None
 pub fn handle_list(
     period: Option<String>,
     pos: Option<String>,
-    db_path: &str,
+    conn: &Connection,
     config: &Config,
 ) -> rusqlite::Result<()> {
-    let conn = Connection::open(db_path)?;
-    db::run_pending_migrations(&conn)?;
+    handle_list_with_highlight(period, pos, conn, config, None)
+}
 
+/// Nuova versione: supporta la stampa con `highlight_id: Option<i32`
+pub fn handle_list_with_highlight(
+    period: Option<String>,
+    pos: Option<String>,
+    conn: &Connection,
+    config: &Config,
+    highlight_id: Option<i32>,
+) -> rusqlite::Result<()> {
     // Normalize pos to uppercase
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
-    let sessions = db::list_sessions(&conn, period.as_deref(), pos_upper.as_deref())?;
+
+    // If highlight_id is Some(id) -> retrieve only that session (efficient single-row query).
+    // Otherwise, retrieve the full list based on filters.
+    let sessions = if let Some(id) = highlight_id {
+        match db::get_session(conn, id)? {
+            Some(s) => vec![s],
+            None => Vec::new(),
+        }
+    } else {
+        db::list_sessions(conn, period.as_deref(), pos_upper.as_deref())?
+    };
 
     if sessions.is_empty() {
-        println!("⚠️  No recorded sessions found");
+        if highlight_id.is_some() {
+            println!("⚠️  No recorded session found with the requested id");
+        } else {
+            println!("⚠️  No recorded sessions found");
+        }
         return Ok(());
     }
 
-    if let Some(p) = period {
-        if p.len() == 4 {
-            println!("📅 Saved sessions for year {}:", p);
-        } else if p.len() == 7 {
-            let parts: Vec<&str> = p.split('-').collect();
-            let year = parts[0];
-            let month = parts[1];
-            println!(
-                "📅 Saved sessions for {} {}:",
-                logic::month_name(month),
-                year
-            );
+    if highlight_id.is_none() {
+        if let Some(p) = period {
+            if p.len() == 4 {
+                println!("📅 Saved sessions for year {}:", p);
+            } else if p.len() == 7 {
+                let parts: Vec<&str> = p.split('-').collect();
+                let year = parts[0];
+                let month = parts[1];
+                println!(
+                    "📅 Saved sessions for {} {}:",
+                    logic::month_name(month),
+                    year
+                );
+            }
+        } else if let Some(p) = pos.as_deref() {
+            println!("📅 Saved sessions for position {}:", p);
+        } else {
+            println!("📅 Saved sessions:");
         }
-    } else if let Some(p) = pos.as_deref() {
-        println!("📅 Saved sessions for position {}:", p);
     } else {
-        println!("📅 Saved sessions:");
+        // When highlighting a single record (called from handle_add), avoid printing any header
+        // to output exclusively the single record.
     }
 
     let mut total_surplus = 0;
+    // Parse work_minutes once to avoid repeated parsing inside the loop
+    let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
 
     for s in sessions {
         let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
-        let work_minutes = utils::parse_work_duration_to_minutes(&Config::load().min_work_duration);
 
         if has_start && !has_end {
             // Only start → calculate expected end
@@ -265,7 +313,6 @@ pub fn handle_list(
             } else {
                 "-".to_string()
             };
-            // Forza la larghezza a 5 caratteri, allineato a destra
             let lunch_fmt = format!("{:^5}", lunch_str);
 
             let end_color = if !s.end.is_empty() {
@@ -278,7 +325,6 @@ pub fn handle_list(
             } else {
                 "-".to_string()
             };
-            // Forza la larghezza a 5 caratteri, allineato a destra
             let end_fmt = format!("{:^5}", end_str);
 
             println!(
@@ -333,8 +379,6 @@ pub fn handle_list(
                 } else {
                     "-".to_string()
                 };
-
-                // Forza la larghezza a 5 caratteri, allineato a destra
                 let lunch_fmt = format!("{:^5}", lunch_str);
 
                 println!(
@@ -351,12 +395,8 @@ pub fn handle_list(
                     formatted_surplus
                 );
             } else {
-                // Case without lunch (work entirely outside the window)
                 let duration = end_time - start_time;
-                let lunch_str = "-".to_string();
-
-                // Forza la larghezza a 5 caratteri, allineato a destra
-                let lunch_fmt = format!("{:^5}", lunch_str);
+                let lunch_fmt = format!("{:^5}", "-".to_string());
 
                 println!(
                     "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
@@ -378,10 +418,8 @@ pub fn handle_list(
                 "-".to_string()
             };
 
-            // Forza la larghezza a 5 caratteri, allineato a destra
             let lunch_fmt = format!("{:^5}", lunch_str);
 
-            // Incomplete information
             println!(
                 "{:>3}: {} | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
                 s.id,
@@ -397,27 +435,29 @@ pub fn handle_list(
         }
     }
 
-    println!();
-    print_separator('-', 25, 110);
+    if highlight_id.is_none() {
+        println!();
+        print_separator('-', 25, 110);
 
-    if total_surplus != 0 {
-        let color_code = if total_surplus < 0 {
-            "\x1b[31m" // rosso
+        if total_surplus != 0 {
+            let color_code = if total_surplus < 0 {
+                "\x1b[31m" // rosso
+            } else {
+                "\x1b[32m" // verde
+            };
+
+            let formatted_total = format!("{:+}", total_surplus);
+
+            println!(
+                "{:>119}",
+                format!(
+                    "Σ Total surplus: {}{:>4} min\x1b[0m",
+                    color_code, formatted_total
+                ),
+            );
         } else {
-            "\x1b[32m" // verde
-        };
-
-        let formatted_total = format!("{:+}", total_surplus);
-
-        println!(
-            "{:>119}",
-            format!(
-                "Σ Total surplus: {}{:>4} min\x1b[0m",
-                color_code, formatted_total
-            ),
-        );
-    } else {
-        println!("{:>119}", format!("Σ Total surplus: {:>4} min", 0));
+            println!("{:>119}", format!("Σ Total surplus: {:>4} min", 0));
+        }
     }
 
     Ok(())

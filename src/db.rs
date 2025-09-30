@@ -190,3 +190,25 @@ pub fn ttlog(conn: &Connection, function: &str, message: &str) -> Result<()> {
     )?;
     Ok(())
 }
+
+/// Retrieve a single work session by id
+pub fn get_session(conn: &Connection, id: i32) -> Result<Option<WorkSession>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, date, position, start_time, lunch_break, end_time FROM work_sessions WHERE id = ?1",
+    )?;
+
+    match stmt.query_row([id], |row| {
+        Ok(WorkSession {
+            id: row.get(0)?,
+            date: row.get(1)?,
+            position: row.get(2)?,
+            start: row.get(3)?,
+            lunch: row.get(4)?,
+            end: row.get(5)?,
+        })
+    }) {
+        Ok(ws) => Ok(Some(ws)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}

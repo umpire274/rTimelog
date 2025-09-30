@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 use r_timelog::config::Config;
+use r_timelog::db;
+use rusqlite::Connection;
 
 mod commands;
 
@@ -116,19 +118,32 @@ fn main() -> rusqlite::Result<()> {
             .to_string_lossy()
             .to_string()
     } else {
-        // Produzione: carica dal file di configurazione
-        Config::load().database
+        // Produzione: usa la configurazione già caricata
+        config.database.clone()
     };
 
     println!();
 
+    // Handle `init` separately because it may need to create config/db files first
+    if let Commands::Init = &cli.command {
+        return commands::handle_init(&cli, &db_path);
+    }
+
+    // For other commands, open a single shared connection, set useful PRAGMA and run migrations once
+    let conn = Connection::open(&db_path)?;
+    // Improve write concurrency and performance on SQLite
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+    // Ensure DB schema is up-to-date once
+    db::run_pending_migrations(&conn)?;
+
     match &cli.command {
-        Commands::Init => commands::handle_init(&cli, &db_path),
         Commands::Conf { .. } => commands::handle_conf(&cli.command),
-        Commands::Add { .. } => commands::handle_add(&cli.command, &db_path),
-        Commands::Del { .. } => commands::handle_del(&cli.command, &db_path),
+        Commands::Add { .. } => commands::handle_add(&cli.command, &conn, &config),
+        Commands::Del { .. } => commands::handle_del(&cli.command, &conn),
         Commands::List { period, pos } => {
-            commands::handle_list(period.clone(), pos.clone(), &db_path, &config)
+            commands::handle_list(period.clone(), pos.clone(), &conn, &config)
         }
+        _ => Ok(()),
     }
 }

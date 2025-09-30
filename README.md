@@ -10,6 +10,16 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
+## What's new in v0.3.4
+
+- The `add` command now prints only the record that was inserted or updated, making confirmation immediate and
+  concise.
+- Project includes configuration files for GitHub Copilot: `copilot-custom.json` (machine-readable) and
+  `copilot-custom.md` (human-readable documentation).
+- Version bumped to `v0.3.4` and dependencies updated.
+
+---
+
 ## ✨ Features
 
 - Add, update, delete and list work sessions.

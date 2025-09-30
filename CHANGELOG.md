@@ -1,5 +1,20 @@
 # Changelog
 
+# [0.3.4] - 2025-09-30
+
+### Added
+
+- Print the record inserted or updated when invoking the `add` command (the command now displays only the affected record).
+- Configuration files for GitHub Copilot: `copilot-custom.json` (machine-readable) and `copilot-custom.md` (human-readable documentation).
+- Bump project version to `v0.3.4` and update dependencies as required.
+
+### Changed
+
+- Updated dependencies and version metadata for the `v0.3.4` release.
+
+---
+
+
 # [0.3.3] - 2025-09-18
 
 ### Added
