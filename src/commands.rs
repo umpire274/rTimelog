@@ -93,12 +93,11 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
         db::init_db(&conn)?;
         println!("✅ Test database initialized at {}", db_path);
     } else {
-        // Production mode: reload config
-        let config = Config::load();
-        let conn = Connection::open(&config.database)?;
+        // Production mode: use the resolved db_path (do not reparse config from disk here)
+        let conn = Connection::open(db_path)?;
         // Initialize DB (creates tables) and run pending migrations
         db::init_db(&conn)?;
-        println!("✅ Database initialized at {}", config.database);
+        println!("✅ Database initialized at {}", db_path);
     }
 
     Ok(())
@@ -475,5 +474,28 @@ pub fn handle_list_with_highlight(
         }
     }
 
+    Ok(())
+}
+
+/// Print rows from the internal `log` table when requested
+pub fn handle_log(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
+    if matches!(cmd, Commands::Log { print: true }) {
+        let mut stmt =
+            conn.prepare_cached("SELECT id, date, function, message FROM log ORDER BY id ASC")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i32>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+
+        println!("📜 Internal log:");
+        for r in rows {
+            let (id, date, function, message) = r?;
+            println!("{:>3}: {} | {} | {}", id, date, function, message);
+        }
+    }
     Ok(())
 }
