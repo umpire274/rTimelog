@@ -132,8 +132,8 @@ fn main() -> rusqlite::Result<()> {
     // For other commands, open a single shared connection, set useful PRAGMA and run migrations once
     let conn = Connection::open(&db_path)?;
     // Improve write concurrency and performance on SQLite
-    let _ = conn.pragma_update(None, "journal_mode", &"WAL");
-    let _ = conn.pragma_update(None, "synchronous", &"NORMAL");
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let _ = conn.pragma_update(None, "synchronous", "NORMAL");
     // Ensure DB schema is up-to-date once
     db::run_pending_migrations(&conn)?;
 
