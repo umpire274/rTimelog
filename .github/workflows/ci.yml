@@ -31,7 +31,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
+      # yaml
+      - name: Regenerate and verify `copilot-custom.md` (non-Windows)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          python scripts/generate_copilot_md.py
+          git --no-pager diff --exit-code -- copilot-custom.md
+
+      - name: Regenerate and verify `copilot-custom.md` (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          python .\scripts\generate_copilot_md.py
+          git diff --exit-code -- copilot-custom.md
+
       - name: Extract version (Unix)
         if: matrix.os != 'windows-latest'
         id: extract_version_unix
