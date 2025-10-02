@@ -130,13 +130,6 @@ enum Commands {
         )]
         summary: bool,
 
-        /// When listing periods, show aggregated daily summary (alias for legacy behaviour)
-        #[arg(
-            long = "aggregate",
-            help = "Show aggregated per-day summaries (work_sessions)"
-        )]
-        aggregate: bool,
-
         /// Output in JSON format (applies to sessions or events depending on other flags)
         #[arg(
             long = "json",
@@ -201,17 +194,13 @@ fn main() -> rusqlite::Result<()> {
     // For other commands, open a single shared connection, set useful PRAGMA and ensure DB is initialized (creates
     // base tables and runs pending migrations).
     let mut conn = Connection::open(&db_path)?;
-    // Improve write concurrency and performance on SQLite
-    let _ = conn.pragma_update(None, "journal_mode", "WAL");
-    let _ = conn.pragma_update(None, "synchronous", "NORMAL");
-    // Ensure base tables exist and run pending migrations via init_db
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
     db::init_db(&conn)?;
 
     match &cli.command {
-        Commands::Conf { .. } => commands::handle_conf(&cli.command),
-        Commands::Log { .. } => commands::handle_log(&cli.command, &conn),
-        Commands::Add { .. } => commands::handle_add(&cli.command, &mut conn, &config),
-        Commands::Del { .. } => commands::handle_del(&cli.command, &conn),
+        Commands::Add { .. } => commands::handle_add(&cli.command, &mut conn, &config)?,
+        Commands::Del { .. } => commands::handle_del(&cli.command, &conn)?,
         Commands::List {
             period,
             pos,
@@ -220,21 +209,26 @@ fn main() -> rusqlite::Result<()> {
             events,
             pairs,
             summary,
-            aggregate,
             json,
-        } => commands::handle_list(
-            period.clone(),
-            pos.clone(),
-            *now,
-            *details,
-            *events,
-            *pairs,
-            *summary,
-            *aggregate,
-            *json,
-            &conn,
-            &config,
-        ),
-        _ => Ok(()),
+        } => {
+            let args = commands::HandleListArgs {
+                period: period.clone(),
+                pos: pos.clone(),
+                now: *now,
+                details: *details,
+                events: *events,
+                pairs: *pairs,
+                summary: *summary,
+                json: *json,
+            };
+            commands::handle_list(&args, &conn, &config)?
+        }
+        Commands::Conf { .. } => commands::handle_conf(&cli.command)?,
+        Commands::Log { .. } => commands::handle_log(&cli.command, &conn)?,
+        Commands::Init => {
+            // Already handled, but included for exhaustiveness
+        }
     }
+
+    Ok(())
 }

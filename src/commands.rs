@@ -195,7 +195,15 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             // Dual-write: also record an event (in). Pass explicit position only if provided, normalized to uppercase.
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
             let event_pos_ref: Option<&str> = event_pos_owned.as_deref();
-            if let Err(e) = db::add_event(conn, date, s, "in", event_pos_ref, "cli", None, config) {
+            let args = db::AddEventArgs {
+                date,
+                time: s,
+                kind: "in",
+                position: event_pos_ref,
+                source: "cli",
+                meta: None,
+            };
+            if let Err(e) = db::add_event(conn, &args, config) {
                 eprintln!("⚠️ Failed to insert event (in): {}", e);
             }
         }
@@ -216,10 +224,10 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             // Also, if there is an out event present, set its lunch_break for compatibility
             match db::last_out_before(conn, date, "23:59") {
                 Ok(Some(out_ev)) => {
-                    if out_ev.lunch_break == 0 {
-                        if let Err(e) = db::set_event_lunch(conn, out_ev.id, l) {
-                            eprintln!("⚠️ Failed to set lunch on event {}: {}", out_ev.id, e);
-                        }
+                    if out_ev.lunch_break == 0
+                        && let Err(e) = db::set_event_lunch(conn, out_ev.id, l)
+                    {
+                        eprintln!("⚠️ Failed to set lunch on event {}: {}", out_ev.id, e);
                     }
                 }
                 Ok(None) => {
@@ -242,9 +250,15 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             // Dual-write: also record an event (out). Pass explicit position only if provided.
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
             let event_pos_ref: Option<&str> = event_pos_owned.as_deref();
-            if let Err(err) =
-                db::add_event(conn, date, e, "out", event_pos_ref, "cli", None, config)
-            {
+            let args = db::AddEventArgs {
+                date,
+                time: e,
+                kind: "out",
+                position: event_pos_ref,
+                source: "cli",
+                meta: None,
+            };
+            if let Err(err) = db::add_event(conn, &args, config) {
                 eprintln!("⚠️ Failed to insert event (out): {}", err);
             }
         }
@@ -292,28 +306,32 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
     Ok(())
 }
 
+pub struct HandleListArgs {
+    pub period: Option<String>,
+    pub pos: Option<String>,
+    pub now: bool,
+    pub details: bool,
+    pub events: bool,
+    pub pairs: Option<usize>,
+    pub summary: bool,
+    pub json: bool,
+}
+
 /// Compatibile: wrapper che mantiene la firma esistente e chiama la versione con highlight = None
+#[allow(clippy::too_many_arguments)]
 pub fn handle_list(
-    period: Option<String>,
-    pos: Option<String>,
-    now: bool,
-    details: bool,
-    events: bool,
-    pairs: Option<usize>,
-    summary: bool,
-    _aggregate: bool,
-    json: bool,
+    args: &HandleListArgs,
     conn: &Connection,
     config: &Config,
 ) -> rusqlite::Result<()> {
-    if now {
+    if args.now {
         // Get today's date in YYYY-MM-DD
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         // If user supplied --now --events but not --details, map to details for convenience
-        if events && !details {
+        if args.events && !args.details {
             let events_today = db::list_events_by_date(conn, &today)?;
-            if json {
+            if args.json {
                 println!("{}", serde_json::to_string_pretty(&events_today).unwrap());
                 return Ok(());
             }
@@ -328,10 +346,10 @@ pub fn handle_list(
             return Ok(());
         }
 
-        if details {
+        return if args.details {
             // Show today's events (details)
             let events_today = db::list_events_by_date(conn, &today)?;
-            if json {
+            if args.json {
                 println!("{}", serde_json::to_string_pretty(&events_today).unwrap());
                 return Ok(());
             }
@@ -340,11 +358,11 @@ pub fn handle_list(
                 return Ok(());
             }
             print_events_table(&events_today, "Today's events");
-            return Ok(());
+            Ok(())
         } else {
             // Default: show today's work_sessions (aggregated)
             let sessions = db::list_sessions_by_date(conn, &today)?;
-            if json {
+            if args.json {
                 println!("{}", serde_json::to_string_pretty(&sessions).unwrap());
                 return Ok(());
             }
@@ -469,24 +487,31 @@ pub fn handle_list(
                 }
             }
             println!("\nSummary surplus: {}m", total_surplus);
-            return Ok(());
-        }
+            Ok(())
+        };
     }
 
     // not `now`: if --events present, list all events; otherwise list work_sessions (legacy)
-    if events {
-        let events_all = db::list_events_filtered(conn, period.as_deref(), pos.as_deref())?;
+    if args.events {
+        let events_all =
+            db::list_events_filtered(conn, args.period.as_deref(), args.pos.as_deref())?;
         if events_all.is_empty() {
-            if json { println!("[]"); } else { println!("No events recorded."); }
+            if args.json {
+                println!("[]");
+            } else {
+                println!("No events recorded.");
+            }
             return Ok(());
         }
         // Calcolo pair/unmatched una sola volta
         let enriched = compute_event_pairs(&events_all);
         // --summary: produci righe aggregate per coppia
-        if summary {
+        if args.summary {
             let mut summaries = compute_event_summaries(&enriched);
-            if let Some(pf) = pairs { summaries.retain(|r| r.pair == pf); }
-            if json {
+            if let Some(pf) = args.pairs {
+                summaries.retain(|r| r.pair == pf);
+            }
+            if args.json {
                 println!("{}", serde_json::to_string_pretty(&summaries).unwrap());
                 return Ok(());
             }
@@ -494,25 +519,32 @@ pub fn handle_list(
             return Ok(());
         }
         // Filtro per pairs se richiesto (modalità dettagliata eventi)
-        let filtered: Vec<_> = if let Some(pfilter) = pairs { enriched.into_iter().filter(|e| e.pair == pfilter).collect() } else { enriched };
-        if json {
+        let filtered: Vec<_> = if let Some(pfilter) = args.pairs {
+            enriched.into_iter().filter(|e| e.pair == pfilter).collect()
+        } else {
+            enriched
+        };
+        if args.json {
             println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
             return Ok(());
         }
         let plain_events: Vec<db::Event> = filtered.iter().map(|ewp| ewp.event.clone()).collect();
-        let pair_map: Vec<(i32, usize, bool)> = filtered.iter().map(|ewp| (ewp.event.id, ewp.pair, ewp.unmatched)).collect();
-        print_events_table_with_pairs(&plain_events, &pair_map, "All events", pairs);
+        let pair_map: Vec<(i32, usize, bool)> = filtered
+            .iter()
+            .map(|ewp| (ewp.event.id, ewp.pair, ewp.unmatched))
+            .collect();
+        print_events_table_with_pairs(&plain_events, &pair_map, "All events", args.pairs);
         return Ok(());
     }
 
-    if json {
+    if args.json {
         // sessions listing in JSON (with filters if provided)
-        let sessions = db::list_sessions(conn, period.as_deref(), pos.as_deref())?;
+        let sessions = db::list_sessions(conn, args.period.as_deref(), args.pos.as_deref())?;
         println!("{}", serde_json::to_string_pretty(&sessions).unwrap());
         return Ok(());
     }
 
-    handle_list_with_highlight(period, pos, conn, config, None)
+    handle_list_with_highlight(args.period.clone(), args.pos.clone(), conn, config, None)
 }
 
 /// Nuova versione: supporta la stampa con `highlight_id: Option<i32`
@@ -873,30 +905,61 @@ fn compute_event_summaries(enriched: &[EventWithPair]) -> Vec<SummaryRow> {
     let mut map: BTreeMap<(String, usize), Accum> = BTreeMap::new();
     for e in enriched {
         let key = (e.event.date.clone(), e.pair);
-        let acc = map.entry(key.clone()).or_insert_with(|| Accum { date: key.0.clone(), pair: key.1, position: String::new(), start: None, end: None, lunch: 0, unmatched_in: false, unmatched_out: false });
+        let acc = map.entry(key.clone()).or_insert_with(|| Accum {
+            date: key.0.clone(),
+            pair: key.1,
+            position: String::new(),
+            start: None,
+            end: None,
+            lunch: 0,
+            unmatched_in: false,
+            unmatched_out: false,
+        });
         if e.event.kind == "in" {
-            if acc.start.is_none() { acc.start = Some(e.event.time.clone()); }
-            if acc.position.is_empty() { acc.position = e.event.position.clone(); }
-            if e.unmatched { acc.unmatched_in = true; }
+            if acc.start.is_none() {
+                acc.start = Some(e.event.time.clone());
+            }
+            if acc.position.is_empty() {
+                acc.position = e.event.position.clone();
+            }
+            if e.unmatched {
+                acc.unmatched_in = true;
+            }
         } else if e.event.kind == "out" {
-            if acc.end.is_none() { acc.end = Some(e.event.time.clone()); }
-            if acc.position.is_empty() { acc.position = e.event.position.clone(); }
-            if e.event.lunch_break > 0 { acc.lunch = e.event.lunch_break; }
-            if e.unmatched { acc.unmatched_out = true; }
+            if acc.end.is_none() {
+                acc.end = Some(e.event.time.clone());
+            }
+            if acc.position.is_empty() {
+                acc.position = e.event.position.clone();
+            }
+            if e.event.lunch_break > 0 {
+                acc.lunch = e.event.lunch_break;
+            }
+            if e.unmatched {
+                acc.unmatched_out = true;
+            }
         }
     }
     let mut rows: Vec<SummaryRow> = Vec::new();
     for (_, acc) in map.into_iter() {
-        let unmatched = (acc.start.is_some() && acc.end.is_none()) || (acc.start.is_none() && acc.end.is_some());
+        let unmatched = (acc.start.is_some() && acc.end.is_none())
+            || (acc.start.is_none() && acc.end.is_some());
         // Calcolo durata
         let mut duration_minutes = 0;
-        if let (Some(s), Some(e)) = (acc.start.as_ref(), acc.end.as_ref()) {
-            if let (Ok(st), Ok(et)) = (chrono::NaiveTime::parse_from_str(s, "%H:%M"), chrono::NaiveTime::parse_from_str(e, "%H:%M")) {
-                let mut diff = (et - st).num_minutes() as i32;
-                if acc.lunch > 0 { diff -= acc.lunch; }
-                if diff < 0 { diff = 0; }
-                duration_minutes = diff;
+        if let (Some(s), Some(e)) = (acc.start.as_ref(), acc.end.as_ref())
+            && let (Ok(st), Ok(et)) = (
+                NaiveTime::parse_from_str(s, "%H:%M"),
+                NaiveTime::parse_from_str(e, "%H:%M"),
+            )
+        {
+            let mut diff = (et - st).num_minutes() as i32;
+            if acc.lunch > 0 {
+                diff -= acc.lunch;
             }
+            if diff < 0 {
+                diff = 0;
+            }
+            duration_minutes = diff;
         }
         rows.push(SummaryRow {
             date: acc.date,
@@ -914,12 +977,21 @@ fn compute_event_summaries(enriched: &[EventWithPair]) -> Vec<SummaryRow> {
 
 fn print_events_summary(rows: &[SummaryRow], title: &str) {
     println!("\u{1F4CA} {}:", title);
-    if rows.is_empty() { println!("(no pairs)"); return; }
+    if rows.is_empty() {
+        println!("(no pairs)");
+        return;
+    }
     // Determine widths
-    let mut w_date=10usize; let mut w_pair=4usize; let mut w_pos=3usize; let mut w_start=5usize; let mut w_end=5usize; let mut w_lunch=5usize; let mut w_dur=3usize;
+    let mut w_date = 10usize;
+    let mut w_pair = 4usize;
+    let mut w_pos = 3usize;
+    let mut w_start = 5usize;
+    let mut w_end = 5usize;
+    let mut w_lunch = 5usize;
+    let mut w_dur = 3usize;
     for r in rows {
         w_date = w_date.max(r.date.len());
-        w_pair = w_pair.max(format!("{}{}", r.pair, if r.unmatched {"*"} else {""}).len());
+        w_pair = w_pair.max(format!("{}{}", r.pair, if r.unmatched { "*" } else { "" }).len());
         w_pos = w_pos.max(r.position.len());
         w_start = w_start.max(r.start.len());
         w_end = w_end.max(r.end.len());
@@ -928,10 +1000,23 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
     }
     println!(
         "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
-        "Date","Pair","Pos","Start","End","Lunch","Dur",
-        date=w_date,pair=w_pair,pos=w_pos,start=w_start,end=w_end,lunch=w_lunch,dur=w_dur
+        "Date",
+        "Pair",
+        "Pos",
+        "Start",
+        "End",
+        "Lunch",
+        "Dur",
+        date = w_date,
+        pair = w_pair,
+        pos = w_pos,
+        start = w_start,
+        end = w_end,
+        lunch = w_lunch,
+        dur = w_dur
     );
-    println!("{}  {}  {}  {}  {}  {}  {}",
+    println!(
+        "{}  {}  {}  {}  {}  {}  {}",
         "-".repeat(w_date),
         "-".repeat(w_pair),
         "-".repeat(w_pos),
@@ -941,11 +1026,23 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
         "-".repeat(w_dur),
     );
     for r in rows {
-        let pair_disp = format!("{}{}", r.pair, if r.unmatched {"*"} else {""});
+        let pair_disp = format!("{}{}", r.pair, if r.unmatched { "*" } else { "" });
         println!(
             "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
-            r.date, pair_disp, r.position, r.start, r.end, r.lunch_minutes, r.duration_minutes,
-            date=w_date,pair=w_pair,pos=w_pos,start=w_start,end=w_end,lunch=w_lunch,dur=w_dur
+            r.date,
+            pair_disp,
+            r.position,
+            r.start,
+            r.end,
+            r.lunch_minutes,
+            r.duration_minutes,
+            date = w_date,
+            pair = w_pair,
+            pos = w_pos,
+            start = w_start,
+            end = w_end,
+            lunch = w_lunch,
+            dur = w_dur
         );
     }
 }
@@ -1020,12 +1117,11 @@ fn print_events_table_with_pairs(
     );
 
     for e in events {
-        if let Some(fp) = filter_pair {
-            if let Some((pair_id, _)) = meta.get(&e.id) {
-                if *pair_id != fp {
-                    continue;
-                }
-            }
+        if let Some(fp) = filter_pair
+            && let Some((pair_id, _)) = meta.get(&e.id)
+            && *pair_id != fp
+        {
+            continue;
         }
         let (pair_id, unmatched) = meta.get(&e.id).cloned().unwrap_or((0, true));
         let pair_display = if unmatched {

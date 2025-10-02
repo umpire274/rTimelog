@@ -942,11 +942,43 @@ fn test_events_unmatched_in_with_star_and_json() {
 #[test]
 fn test_events_summary_basic() {
     let db_path = setup_test_db("events_summary_basic");
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "init"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
     // Pair 1
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-01", "O", "09:00", "30", "12:00"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-01",
+            "O",
+            "09:00",
+            "30",
+            "12:00",
+        ])
+        .assert()
+        .success();
     // Pair 2
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-01", "O", "13:00", "30", "17:00"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-01",
+            "O",
+            "13:00",
+            "30",
+            "17:00",
+        ])
+        .assert()
+        .success();
 
     Command::cargo_bin("rtimelog")
         .unwrap()
@@ -963,15 +995,56 @@ fn test_events_summary_basic() {
 #[test]
 fn test_events_summary_filter_pair() {
     let db_path = setup_test_db("events_summary_filter_pair");
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "init"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
     // Pair 1
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-02", "R", "08:30", "30", "11:30"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-02",
+            "R",
+            "08:30",
+            "30",
+            "11:30",
+        ])
+        .assert()
+        .success();
     // Pair 2
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-02", "R", "12:30", "0", "16:00"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-02",
+            "R",
+            "12:30",
+            "0",
+            "16:00",
+        ])
+        .assert()
+        .success();
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--summary", "--pairs", "2"])
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "list",
+            "--events",
+            "--summary",
+            "--pairs",
+            "2",
+        ])
         .assert()
         .success()
         .stdout(contains("Event pairs summary"))
@@ -983,15 +1056,53 @@ fn test_events_summary_filter_pair() {
 #[test]
 fn test_events_summary_json() {
     let db_path = setup_test_db("events_summary_json");
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "init"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
     // Pair 1
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-03", "O", "09:10", "30", "12:10"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-03",
+            "O",
+            "09:10",
+            "30",
+            "12:10",
+        ])
+        .assert()
+        .success();
     // Pair 2 unmatched (solo in)
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-03", "O", "13:05"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-03",
+            "O",
+            "13:05",
+        ])
+        .assert()
+        .success();
 
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--summary", "--json"])
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "list",
+            "--events",
+            "--summary",
+            "--json",
+        ])
         .assert()
         .success()
         .stdout(contains("\"pair\""))
@@ -1003,9 +1114,25 @@ fn test_events_summary_json() {
 #[test]
 fn test_events_summary_unmatched_only() {
     let db_path = setup_test_db("events_summary_unmatched_only");
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "init"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
     // single IN event
-    Command::cargo_bin("rtimelog").unwrap().args(["--db", &db_path, "--test", "add", "2025-12-04", "R", "10:00"]).assert().success();
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-12-04",
+            "R",
+            "10:00",
+        ])
+        .assert()
+        .success();
 
     Command::cargo_bin("rtimelog")
         .unwrap()
@@ -1016,4 +1143,3 @@ fn test_events_summary_unmatched_only() {
         .stdout(contains("1*"))
         .stdout(contains("Dur"));
 }
-
