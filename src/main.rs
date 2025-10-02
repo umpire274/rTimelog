@@ -104,6 +104,45 @@ enum Commands {
         /// Show only today's record (if present)
         #[arg(long = "now", help = "Show only today's record")]
         now: bool,
+
+        /// When used with --now, show the detailed events (in/out) for today instead of aggregated work_sessions
+        #[arg(
+            long = "details",
+            help = "With --now show today's detailed events (in/out) instead of aggregated work_sessions"
+        )]
+        details: bool,
+
+        /// Show all events (in/out) from the `events` table
+        #[arg(
+            long = "events",
+            help = "List all events (in/out) from the events table"
+        )]
+        events: bool,
+
+        /// Filter a specific pair id (requires --events); pairs are per-day sequential in/out groupings
+        #[arg(long = "pairs", help = "Filter by pair id (only with --events)")]
+        pairs: Option<usize>,
+
+        /// Summarize events into per-pair rows (in/out, duration, lunch); use with --events
+        #[arg(
+            long = "summary",
+            help = "Show summarized per-pair rows (requires --events)"
+        )]
+        summary: bool,
+
+        /// When listing periods, show aggregated daily summary (alias for legacy behaviour)
+        #[arg(
+            long = "aggregate",
+            help = "Show aggregated per-day summaries (work_sessions)"
+        )]
+        aggregate: bool,
+
+        /// Output in JSON format (applies to sessions or events depending on other flags)
+        #[arg(
+            long = "json",
+            help = "Output data as JSON instead of human-readable text"
+        )]
+        json: bool,
     },
 }
 
@@ -161,7 +200,7 @@ fn main() -> rusqlite::Result<()> {
 
     // For other commands, open a single shared connection, set useful PRAGMA and ensure DB is initialized (creates
     // base tables and runs pending migrations).
-    let conn = Connection::open(&db_path)?;
+    let mut conn = Connection::open(&db_path)?;
     // Improve write concurrency and performance on SQLite
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
     let _ = conn.pragma_update(None, "synchronous", "NORMAL");
@@ -171,11 +210,31 @@ fn main() -> rusqlite::Result<()> {
     match &cli.command {
         Commands::Conf { .. } => commands::handle_conf(&cli.command),
         Commands::Log { .. } => commands::handle_log(&cli.command, &conn),
-        Commands::Add { .. } => commands::handle_add(&cli.command, &conn, &config),
+        Commands::Add { .. } => commands::handle_add(&cli.command, &mut conn, &config),
         Commands::Del { .. } => commands::handle_del(&cli.command, &conn),
-        Commands::List { period, pos, now } => {
-            commands::handle_list(period.clone(), pos.clone(), *now, &conn, &config)
-        }
+        Commands::List {
+            period,
+            pos,
+            now,
+            details,
+            events,
+            pairs,
+            summary,
+            aggregate,
+            json,
+        } => commands::handle_list(
+            period.clone(),
+            pos.clone(),
+            *now,
+            *details,
+            *events,
+            *pairs,
+            *summary,
+            *aggregate,
+            *json,
+            &conn,
+            &config,
+        ),
         _ => Ok(()),
     }
 }
