@@ -138,7 +138,7 @@ pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
 }
 
 /// Handle the `add` command
-pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlite::Result<()> {
+pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rusqlite::Result<()> {
     if let Commands::Add {
         date,
         pos_pos,
@@ -191,6 +191,21 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             db::upsert_start(conn, date, s)?;
             println!("✅ Start time {} registered for {}", s, date);
             changes.push(format!("start={}", s));
+
+            // Dual-write: also record an event (in). Pass explicit position only if provided, normalized to uppercase.
+            let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
+            let event_pos_ref: Option<&str> = event_pos_owned.as_deref();
+            let args = db::AddEventArgs {
+                date,
+                time: s,
+                kind: "in",
+                position: event_pos_ref,
+                source: "cli",
+                meta: None,
+            };
+            if let Err(e) = db::add_event(conn, &args, config) {
+                eprintln!("⚠️ Failed to insert event (in): {}", e);
+            }
         }
 
         // Handle lunch
@@ -205,6 +220,21 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             db::upsert_lunch(conn, date, l)?;
             println!("✅ Lunch {} min registered for {}", l, date);
             changes.push(format!("lunch={}", l));
+
+            // Also, if there is an out event present, set its lunch_break for compatibility
+            match db::last_out_before(conn, date, "23:59") {
+                Ok(Some(out_ev)) => {
+                    if out_ev.lunch_break == 0
+                        && let Err(e) = db::set_event_lunch(conn, out_ev.id, l)
+                    {
+                        eprintln!("⚠️ Failed to set lunch on event {}: {}", out_ev.id, e);
+                    }
+                }
+                Ok(None) => {
+                    // no out events; nothing to update
+                }
+                Err(e) => eprintln!("⚠️ Error while searching for last out event: {}", e),
+            }
         }
 
         // Handle end time
@@ -216,6 +246,21 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
             db::upsert_end(conn, date, e)?;
             println!("✅ End time {} registered for {}", e, date);
             changes.push(format!("end={}", e));
+
+            // Dual-write: also record an event (out). Pass explicit position only if provided.
+            let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
+            let event_pos_ref: Option<&str> = event_pos_owned.as_deref();
+            let args = db::AddEventArgs {
+                date,
+                time: e,
+                kind: "out",
+                position: event_pos_ref,
+                source: "cli",
+                meta: None,
+            };
+            if let Err(err) = db::add_event(conn, &args, config) {
+                eprintln!("⚠️ Failed to insert event (out): {}", err);
+            }
         }
 
         // Warn if no field provided
@@ -261,14 +306,245 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
     Ok(())
 }
 
+pub struct HandleListArgs {
+    pub period: Option<String>,
+    pub pos: Option<String>,
+    pub now: bool,
+    pub details: bool,
+    pub events: bool,
+    pub pairs: Option<usize>,
+    pub summary: bool,
+    pub json: bool,
+}
+
 /// Compatibile: wrapper che mantiene la firma esistente e chiama la versione con highlight = None
+#[allow(clippy::too_many_arguments)]
 pub fn handle_list(
-    period: Option<String>,
-    pos: Option<String>,
+    args: &HandleListArgs,
     conn: &Connection,
     config: &Config,
 ) -> rusqlite::Result<()> {
-    handle_list_with_highlight(period, pos, conn, config, None)
+    if args.now {
+        // Get today's date in YYYY-MM-DD
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        // If user supplied --now --events but not --details, map to details for convenience
+        if args.events && !args.details {
+            let events_today = db::list_events_by_date(conn, &today)?;
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&events_today).unwrap());
+                return Ok(());
+            }
+            println!(
+                "ℹ️  '--now --events' rilevato: usa '--now --details'. Mostro i dettagli degli eventi di oggi."
+            );
+            if events_today.is_empty() {
+                println!("No events for today.");
+                return Ok(());
+            }
+            print_events_table(&events_today, "Today's events");
+            return Ok(());
+        }
+
+        return if args.details {
+            // Show today's events (details)
+            let events_today = db::list_events_by_date(conn, &today)?;
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&events_today).unwrap());
+                return Ok(());
+            }
+            if events_today.is_empty() {
+                println!("No events for today.");
+                return Ok(());
+            }
+            print_events_table(&events_today, "Today's events");
+            Ok(())
+        } else {
+            // Default: show today's work_sessions (aggregated)
+            let sessions = db::list_sessions_by_date(conn, &today)?;
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&sessions).unwrap());
+                return Ok(());
+            }
+            if sessions.is_empty() {
+                println!("No record for today.");
+                return Ok(());
+            }
+            println!("📅 Today's session(s):");
+            let mut total_surplus = 0;
+            let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
+            let sep_ch = config.separator_char.chars().next().unwrap_or('-');
+            for s in sessions {
+                let (pos_string, pos_color) = describe_position(s.position.as_str());
+                let has_start = !s.start.trim().is_empty();
+                let has_end = !s.end.trim().is_empty();
+                if has_start && !has_end {
+                    let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+                    let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
+                    let lunch_str = if s.lunch > 0 {
+                        mins2hhmm(s.lunch)
+                    } else {
+                        "-".to_string()
+                    };
+                    let lunch_fmt = format!("{:^5}", lunch_str);
+                    let end_color = if !s.end.is_empty() {
+                        "\x1b[0m"
+                    } else {
+                        "\x1b[90m"
+                    };
+                    let end_str = if !s.end.is_empty() {
+                        s.end
+                    } else {
+                        "-".to_string()
+                    };
+                    println!(
+                        "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                        s.id,
+                        s.date,
+                        pos_color,
+                        pos_string,
+                        s.start,
+                        lunch_color,
+                        lunch_fmt,
+                        end_color,
+                        end_str,
+                        expected.format("%H:%M"),
+                        "-"
+                    );
+                    if utils::is_last_day_of_month(&s.date) {
+                        print_separator(sep_ch, 25, 110);
+                    }
+                } else if has_start && has_end {
+                    let _start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
+                    let _end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
+                    let pos_char = s.position.chars().next().unwrap_or('O');
+                    let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
+                    let effective_lunch =
+                        logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char, config);
+                    if crosses_lunch && effective_lunch > 0 {
+                        let expected =
+                            logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
+                        let surplus = logic::calculate_surplus(
+                            &s.start,
+                            effective_lunch,
+                            &s.end,
+                            work_minutes,
+                        );
+                        let surplus_minutes = surplus.num_minutes();
+                        total_surplus += surplus_minutes;
+                        let color_code = if surplus_minutes < 0 {
+                            "\x1b[31m"
+                        } else {
+                            "\x1b[32m"
+                        };
+                        println!(
+                            "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                            s.id,
+                            s.date,
+                            pos_color,
+                            pos_string,
+                            s.start,
+                            mins2hhmm(effective_lunch),
+                            s.end,
+                            expected.format("%H:%M"),
+                            color_code,
+                            format!("{}m", surplus_minutes)
+                        );
+                    } else {
+                        let expected =
+                            logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+                        let surplus =
+                            logic::calculate_surplus(&s.start, s.lunch, &s.end, work_minutes);
+                        let surplus_minutes = surplus.num_minutes();
+                        total_surplus += surplus_minutes;
+                        let color_code = if surplus_minutes < 0 {
+                            "\x1b[31m"
+                        } else {
+                            "\x1b[32m"
+                        };
+                        println!(
+                            "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                            s.id,
+                            s.date,
+                            pos_color,
+                            pos_string,
+                            s.start,
+                            mins2hhmm(s.lunch),
+                            s.end,
+                            expected.format("%H:%M"),
+                            color_code,
+                            format!("{}m", surplus_minutes)
+                        );
+                    }
+                    if utils::is_last_day_of_month(&s.date) {
+                        print_separator(sep_ch, 25, 110);
+                    }
+                } else {
+                    println!(
+                        "{:>3}: {} | {}{:<16}\x1b[0m | -",
+                        s.id, s.date, pos_color, pos_string
+                    );
+                }
+            }
+            println!("\nSummary surplus: {}m", total_surplus);
+            Ok(())
+        };
+    }
+
+    // not `now`: if --events present, list all events; otherwise list work_sessions (legacy)
+    if args.events {
+        let events_all =
+            db::list_events_filtered(conn, args.period.as_deref(), args.pos.as_deref())?;
+        if events_all.is_empty() {
+            if args.json {
+                println!("[]");
+            } else {
+                println!("No events recorded.");
+            }
+            return Ok(());
+        }
+        // Calcolo pair/unmatched una sola volta
+        let enriched = compute_event_pairs(&events_all);
+        // --summary: produci righe aggregate per coppia
+        if args.summary {
+            let mut summaries = compute_event_summaries(&enriched);
+            if let Some(pf) = args.pairs {
+                summaries.retain(|r| r.pair == pf);
+            }
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&summaries).unwrap());
+                return Ok(());
+            }
+            print_events_summary(&summaries, "Event pairs summary");
+            return Ok(());
+        }
+        // Filtro per pairs se richiesto (modalità dettagliata eventi)
+        let filtered: Vec<_> = if let Some(pfilter) = args.pairs {
+            enriched.into_iter().filter(|e| e.pair == pfilter).collect()
+        } else {
+            enriched
+        };
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
+            return Ok(());
+        }
+        let plain_events: Vec<db::Event> = filtered.iter().map(|ewp| ewp.event.clone()).collect();
+        let pair_map: Vec<(i32, usize, bool)> = filtered
+            .iter()
+            .map(|ewp| (ewp.event.id, ewp.pair, ewp.unmatched))
+            .collect();
+        print_events_table_with_pairs(&plain_events, &pair_map, "All events", args.pairs);
+        return Ok(());
+    }
+
+    if args.json {
+        // sessions listing in JSON (with filters if provided)
+        let sessions = db::list_sessions(conn, args.period.as_deref(), args.pos.as_deref())?;
+        println!("{}", serde_json::to_string_pretty(&sessions).unwrap());
+        return Ok(());
+    }
+
+    handle_list_with_highlight(args.period.clone(), args.pos.clone(), conn, config, None)
 }
 
 /// Nuova versione: supporta la stampa con `highlight_id: Option<i32`
@@ -380,8 +656,8 @@ pub fn handle_list_with_highlight(
                 print_separator(sep_ch, 25, 110);
             }
         } else if has_start && has_end {
-            let start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
-            let end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
+            let _start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
+            let _end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
             let pos_char = s.position.chars().next().unwrap_or('O');
             let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
 
@@ -436,7 +712,7 @@ pub fn handle_list_with_highlight(
                     print_separator(sep_ch, 25, 110);
                 }
             } else {
-                let duration = end_time - start_time;
+                let duration = _end_time - _start_time;
                 let lunch_fmt = format!("{:^5}", "-".to_string());
 
                 println!(
@@ -531,4 +807,357 @@ pub fn handle_log(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Struct di supporto per arricchire l'output JSON e calcoli Pair/unmatched
+#[derive(serde::Serialize, Clone)]
+struct EventWithPair {
+    #[serde(flatten)]
+    event: db::Event,
+    pair: usize,
+    unmatched: bool,
+}
+
+/// Calcola per una slice di Event i pair id (sequenza per data) ed il flag unmatched.
+/// Regole:
+///  - Ogni evento 'in' apre una nuova coppia con pair id incrementale (per data) e unmatched=true
+///  - Il primo 'out' successivo chiude la prima coppia aperta (FIFO) e diventa stesso pair, unmatched=false (anche per l'in)
+///  - Un 'out' senza 'in' precedente genera un nuovo pair id con unmatched=true
+fn compute_event_pairs(events: &[db::Event]) -> Vec<EventWithPair> {
+    use std::collections::VecDeque;
+    let mut result: Vec<EventWithPair> = Vec::with_capacity(events.len());
+    let mut current_date = String::new();
+    let mut open_in_queue: VecDeque<usize> = VecDeque::new();
+    let mut pair_counter: usize = 0;
+    for ev in events {
+        if ev.date != current_date {
+            // reset per nuova data
+            current_date = ev.date.clone();
+            open_in_queue.clear();
+            pair_counter = 0;
+        }
+        match ev.kind.as_str() {
+            "in" => {
+                pair_counter += 1;
+                result.push(EventWithPair {
+                    event: ev.clone(),
+                    pair: pair_counter,
+                    unmatched: true,
+                });
+                open_in_queue.push_back(result.len() - 1);
+            }
+            "out" => {
+                if let Some(in_idx) = open_in_queue.pop_front() {
+                    let pair_id = result[in_idx].pair;
+                    result[in_idx].unmatched = false; // match chiuso
+                    result.push(EventWithPair {
+                        event: ev.clone(),
+                        pair: pair_id,
+                        unmatched: false,
+                    });
+                } else {
+                    pair_counter += 1; // out orfano
+                    result.push(EventWithPair {
+                        event: ev.clone(),
+                        pair: pair_counter,
+                        unmatched: true,
+                    });
+                }
+            }
+            _ => {
+                pair_counter += 1;
+                result.push(EventWithPair {
+                    event: ev.clone(),
+                    pair: pair_counter,
+                    unmatched: true,
+                });
+            }
+        }
+    }
+    result
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+struct SummaryRow {
+    date: String,
+    pair: usize,
+    position: String,
+    start: String,
+    end: String,
+    lunch_minutes: i32,
+    duration_minutes: i32,
+    unmatched: bool,
+}
+
+fn compute_event_summaries(enriched: &[EventWithPair]) -> Vec<SummaryRow> {
+    use std::collections::BTreeMap;
+    #[derive(Default)]
+    struct Accum {
+        date: String,
+        pair: usize,
+        position: String,
+        start: Option<String>,
+        end: Option<String>,
+        lunch: i32,
+        unmatched_in: bool,
+        unmatched_out: bool,
+    }
+    let mut map: BTreeMap<(String, usize), Accum> = BTreeMap::new();
+    for e in enriched {
+        let key = (e.event.date.clone(), e.pair);
+        let acc = map.entry(key.clone()).or_insert_with(|| Accum {
+            date: key.0.clone(),
+            pair: key.1,
+            position: String::new(),
+            start: None,
+            end: None,
+            lunch: 0,
+            unmatched_in: false,
+            unmatched_out: false,
+        });
+        if e.event.kind == "in" {
+            if acc.start.is_none() {
+                acc.start = Some(e.event.time.clone());
+            }
+            if acc.position.is_empty() {
+                acc.position = e.event.position.clone();
+            }
+            if e.unmatched {
+                acc.unmatched_in = true;
+            }
+        } else if e.event.kind == "out" {
+            if acc.end.is_none() {
+                acc.end = Some(e.event.time.clone());
+            }
+            if acc.position.is_empty() {
+                acc.position = e.event.position.clone();
+            }
+            if e.event.lunch_break > 0 {
+                acc.lunch = e.event.lunch_break;
+            }
+            if e.unmatched {
+                acc.unmatched_out = true;
+            }
+        }
+    }
+    let mut rows: Vec<SummaryRow> = Vec::new();
+    for (_, acc) in map.into_iter() {
+        let unmatched = (acc.start.is_some() && acc.end.is_none())
+            || (acc.start.is_none() && acc.end.is_some());
+        // Calcolo durata
+        let mut duration_minutes = 0;
+        if let (Some(s), Some(e)) = (acc.start.as_ref(), acc.end.as_ref())
+            && let (Ok(st), Ok(et)) = (
+                NaiveTime::parse_from_str(s, "%H:%M"),
+                NaiveTime::parse_from_str(e, "%H:%M"),
+            )
+        {
+            let mut diff = (et - st).num_minutes() as i32;
+            if acc.lunch > 0 {
+                diff -= acc.lunch;
+            }
+            if diff < 0 {
+                diff = 0;
+            }
+            duration_minutes = diff;
+        }
+        rows.push(SummaryRow {
+            date: acc.date,
+            pair: acc.pair,
+            position: acc.position,
+            start: acc.start.unwrap_or_else(|| "-".to_string()),
+            end: acc.end.unwrap_or_else(|| "-".to_string()),
+            lunch_minutes: acc.lunch,
+            duration_minutes,
+            unmatched,
+        });
+    }
+    rows
+}
+
+fn print_events_summary(rows: &[SummaryRow], title: &str) {
+    println!("\u{1F4CA} {}:", title);
+    if rows.is_empty() {
+        println!("(no pairs)");
+        return;
+    }
+    // Determine widths
+    let mut w_date = 10usize;
+    let mut w_pair = 4usize;
+    let mut w_pos = 3usize;
+    let mut w_start = 5usize;
+    let mut w_end = 5usize;
+    let mut w_lunch = 5usize;
+    let mut w_dur = 3usize;
+    for r in rows {
+        w_date = w_date.max(r.date.len());
+        w_pair = w_pair.max(format!("{}{}", r.pair, if r.unmatched { "*" } else { "" }).len());
+        w_pos = w_pos.max(r.position.len());
+        w_start = w_start.max(r.start.len());
+        w_end = w_end.max(r.end.len());
+        w_lunch = w_lunch.max(r.lunch_minutes.to_string().len());
+        w_dur = w_dur.max(r.duration_minutes.to_string().len());
+    }
+    println!(
+        "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
+        "Date",
+        "Pair",
+        "Pos",
+        "Start",
+        "End",
+        "Lunch",
+        "Dur",
+        date = w_date,
+        pair = w_pair,
+        pos = w_pos,
+        start = w_start,
+        end = w_end,
+        lunch = w_lunch,
+        dur = w_dur
+    );
+    println!(
+        "{}  {}  {}  {}  {}  {}  {}",
+        "-".repeat(w_date),
+        "-".repeat(w_pair),
+        "-".repeat(w_pos),
+        "-".repeat(w_start),
+        "-".repeat(w_end),
+        "-".repeat(w_lunch),
+        "-".repeat(w_dur),
+    );
+    for r in rows {
+        let pair_disp = format!("{}{}", r.pair, if r.unmatched { "*" } else { "" });
+        println!(
+            "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
+            r.date,
+            pair_disp,
+            r.position,
+            r.start,
+            r.end,
+            r.lunch_minutes,
+            r.duration_minutes,
+            date = w_date,
+            pair = w_pair,
+            pos = w_pos,
+            start = w_start,
+            end = w_end,
+            lunch = w_lunch,
+            dur = w_dur
+        );
+    }
+}
+
+// Helper to print events in aligned table format
+fn print_events_table_with_pairs(
+    events: &[db::Event],
+    pair_map: &[(i32, usize, bool)],
+    title: &str,
+    filter_pair: Option<usize>,
+) {
+    println!("\u{1F4C5} {}:", title);
+    if events.is_empty() {
+        return;
+    }
+    // costruisce lookup id -> (pair, unmatched)
+    use std::collections::HashMap;
+    let mut meta: HashMap<i32, (usize, bool)> = HashMap::new();
+    for (id, pair, un) in pair_map {
+        meta.insert(*id, (*pair, *un));
+    }
+
+    // Determina colonne (Pair colonna con possibile suffisso *)
+    let mut w_id = 2usize;
+    let mut w_date = 10usize;
+    let mut w_time = 5usize;
+    let mut w_kind = 4usize;
+    let mut w_pos = 3usize;
+    let mut w_lunch = 5usize;
+    let mut w_src = 5usize;
+    let mut w_pair = 4usize;
+    for e in events {
+        if let Some((pair, unmatched)) = meta.get(&e.id) {
+            let tag = if *unmatched {
+                format!("{}*", pair)
+            } else {
+                pair.to_string()
+            };
+            w_pair = w_pair.max(tag.len());
+        }
+        w_id = w_id.max(e.id.to_string().len());
+        w_date = w_date.max(e.date.len());
+        w_time = w_time.max(e.time.len());
+        w_kind = w_kind.max(e.kind.len());
+        w_pos = w_pos.max(e.position.len());
+        w_lunch = w_lunch.max(e.lunch_break.to_string().len());
+        w_src = w_src.max(e.source.len());
+    }
+
+    println!(
+        "{:<id$}  {:<date$}  {:<time$}  {:<kind$}  {:<pos$}  {:>lunch$}  {:<src$}  {:>pair$}",
+        "ID",
+        "Date",
+        "Time",
+        "Kind",
+        "Pos",
+        "Lunch",
+        "Src",
+        "Pair",
+        id = w_id,
+        date = w_date,
+        time = w_time,
+        kind = w_kind,
+        pos = w_pos,
+        lunch = w_lunch,
+        src = w_src,
+        pair = w_pair
+    );
+    println!(
+        "{:-<1$}  {:-<2$}  {:-<3$}  {:-<4$}  {:-<5$}  {:-<6$}  {:-<7$}  {:-<8$}",
+        "", w_id, w_date, w_time, w_kind, w_pos, w_lunch, w_src, w_pair
+    );
+
+    for e in events {
+        if let Some(fp) = filter_pair
+            && let Some((pair_id, _)) = meta.get(&e.id)
+            && *pair_id != fp
+        {
+            continue;
+        }
+        let (pair_id, unmatched) = meta.get(&e.id).cloned().unwrap_or((0, true));
+        let pair_display = if unmatched {
+            format!("{}*", pair_id)
+        } else {
+            pair_id.to_string()
+        };
+        println!(
+            "{:<id$}  {:<date$}  {:<time$}  {:<kind$}  {:<pos$}  {:>lunch$}  {:<src$}  {:>pair$}",
+            e.id,
+            e.date,
+            e.time,
+            e.kind,
+            e.position,
+            e.lunch_break,
+            e.source,
+            pair_display,
+            id = w_id,
+            date = w_date,
+            time = w_time,
+            kind = w_kind,
+            pos = w_pos,
+            lunch = w_lunch,
+            src = w_src,
+            pair = w_pair
+        );
+    }
+}
+
+// Mantiene per retrocompatibilità la vecchia funzione ma delega alla nuova con enrich
+fn print_events_table(events: &[db::Event], title: &str) {
+    let enriched = compute_event_pairs(events);
+    let plain: Vec<db::Event> = enriched.iter().map(|e| e.event.clone()).collect();
+    let map: Vec<(i32, usize, bool)> = enriched
+        .iter()
+        .map(|e| (e.event.id, e.pair, e.unmatched))
+        .collect();
+    print_events_table_with_pairs(&plain, &map, title, None);
 }

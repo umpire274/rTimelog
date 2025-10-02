@@ -10,7 +10,99 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in v0.3.6
+## What's new in v0.4.0
+
+**Punch events & advanced reporting**
+
+This release introduces a new internal `events` layer (punches) with powerful filtering and aggregation:
+
+| Feature | Description |
+|---------|-------------|
+| `--events` | Lists raw punch events (in/out) with a derived `Pair` column. |
+| `--pairs <id>` | Filters events (or summaries) to a specific pair id (per date). |
+| `--summary` | Aggregates events into one row per pair: start, end, lunch, net duration. |
+| `--json` | Structured JSON output (raw events or summary) including `pair` & `unmatched`. |
+| Unmatched handling | Lone `in` or `out` events marked with asterisk (`1*`) and `unmatched: true` in JSON. |
+| Case-insensitive position | `--pos r` equals `--pos R` for both sessions and events. |
+
+### Pair logic
+Pairs are assigned **per date** using FIFO pairing: the first `in` matches the first subsequent `out`. Numbering restarts for each day. Any unmatched `in` or `out` becomes its own pair and is flagged *unmatched*.
+
+### Dual write compatibility
+The `add` command continues to maintain the legacy `work_sessions` table, while also emitting events used by the new reporting flags. Existing scripts relying on `list` (without `--events`) keep working unchanged.
+
+### Example quick tour
+```bash
+# Detailed events (raw punches)
+rtimelog list --events
+
+# Same, JSON
+rtimelog list --events --json
+
+# Only remote events (case-insensitive)
+rtimelog list --events --pos r
+
+# Summarized per pair (start/end/lunch/duration)
+rtimelog list --events --summary
+
+# Summarized only pair 2
+rtimelog list --events --summary --pairs 2
+
+# JSON summary
+rtimelog list --events --summary --json
+```
+
+### Sample (events table)
+```
+📅 All events:
+ID  Date        Time   Kind  Pos  Lunch  Src   Pair
+--  ----------  -----  ----  ---  -----  ----- ----
+1   2025-12-01  09:00  in    O        0  cli      1
+2   2025-12-01  12:00  out   O       30  cli      1
+3   2025-12-01  13:00  in    O        0  cli      2
+4   2025-12-01  17:00  out   O        0  cli      2
+```
+
+### Sample (summary mode)
+```
+📊 Event pairs summary:
+Date        Pair  Pos  Start  End    Lunch  Dur
+----------  ----  ---  -----  -----  -----  ---
+2025-12-01  1     O    09:00  12:00     30  150
+2025-12-01  2     O    13:00  17:00      0  240
+```
+*Dur = net worked minutes (lunch deducted if present).*  
+*Unmatched rows would display `1*` (asterisk) and have `duration_minutes = 0` if incomplete.*
+
+### Sample JSON (summary)
+```json
+[
+  {
+    "date": "2025-12-01",
+    "pair": 1,
+    "position": "O",
+    "start": "09:00",
+    "end": "12:00",
+    "lunch_minutes": 30,
+    "duration_minutes": 150,
+    "unmatched": false
+  },
+  {
+    "date": "2025-12-01",
+    "pair": 2,
+    "position": "O",
+    "start": "13:00",
+    "end": "17:00",
+    "lunch_minutes": 0,
+    "duration_minutes": 240,
+    "unmatched": false
+  }
+]
+```
+
+---
+
+## What's new in v0.3.6 *(previous)*
 
 - Added: new `log` subcommand with `--print` to display rows from the internal `log` table for debugging and audit purposes.
 
@@ -33,7 +125,7 @@ The tool calculates the expected exit time and the surplus of worked minutes.
     - **Purple background + white bold** = Holiday
 - Configurable default DB path via configuration file or `--db` parameter.
 - Automatic DB migrations with version tracking (`schema_migrations` table).
-- Configurable daily working time (default `8h`)
+- Configurable daily working time (`min_work_duration`, default `8h`).
 - Automatic expected exit calculation based on:
     - Start time
     - Lunch break duration
@@ -43,7 +135,8 @@ The tool calculates the expected exit time and the surplus of worked minutes.
     - Maximum 1h 30m
     - Required only for `Office` position (`O`)
 - View surplus/deficit of worked time compared to expected
-- Display of the **total surplus** (sum of daily surplus/deficit) at the end of the `list` output.
+- Display of the **total surplus** at the bottom of `list` output.
+- **Event mode** with: Pair grouping, per-pair summary, JSON enrichment, unmatched detection, filtering by position & pair id.
 - Automatic database migration for schema changes
 - Cross-platform configuration file management:
     - Linux/macOS: `$HOME/.rtimelog/rtimelog.conf`
@@ -60,22 +153,27 @@ rtimelog init
 ```
 
 a configuration file is created in the user’s config directory (`rtimelog.conf`).  
-It includes:
+It includes for current releases (≥ 0.4.0):
 
 ```yaml
 database: /home/user/.rtimelog/rtimelog.sqlite
 default_position: O
-working_time: 8h
+min_work_duration: 8h
+min_duration_lunch_break: 30
+max_duration_lunch_break: 90
+separator_char: "-"
 ```
 
+Key fields:
 - **database** → path to the SQLite DB file
-- **default_position** → default working position (`O` = Office, `R` = Remote, `H` = Holiday)
-- **working_time** → daily expected working time, e.g.:
-    - `8h`
-    - `7h 36m`
+- **default_position** → default working position (`O`, `R`, `C`, `H`)
+- **min_work_duration** → daily expected working time (e.g. `7h 36m`, `8h`)
+- **min_duration_lunch_break** / **max_duration_lunch_break** → lunch constraints (minutes)
+- **separator_char** → character used for month-end separator lines
 
-You can override the DB path at runtime with the global option:
+> NOTE: Older docs referenced `working_time`; it has been unified as `min_work_duration`.
 
+Override DB path at runtime:
 ```bash
 rtimelog --db /custom/path/mydb.sqlite <command>
 ```
@@ -85,35 +183,25 @@ rtimelog --db /custom/path/mydb.sqlite <command>
 ## 🖥️ Usage
 
 ### Initialize DB and config
-
 ```bash
 rtimelog init
 ```
-
-With custom DB name:
-
+Custom DB file relative to config dir:
 ```bash
 rtimelog --db mydb.sqlite init
 ```
-
-With absolute path (spaces allowed):
-
+Absolute path:
 ```bash
 rtimelog --db "G:/My Drive/Work/Timelog/rtimelog.sqlite" init
 ```
 
----
-
-### Add work session (full)
-
+### Add a full work session
 ```bash
 rtimelog add 2025-09-13 O 09:00 60 17:30
 ```
+Creates or updates the legacy session AND adds two events (in/out) for reporting.
 
----
-
-### Add work session (partial updates)
-
+### Partial updates (each creates/updates events when relevant)
 ```bash
 rtimelog add 2025-09-13 --pos R
 rtimelog add 2025-09-13 --in 09:00
@@ -121,152 +209,75 @@ rtimelog add 2025-09-13 --lunch 45
 rtimelog add 2025-09-13 --out 17:30
 ```
 
----
-
 ### Add holiday
-
 ```bash
 rtimelog add 2025-09-14 --pos H
 ```
 
-Output with purple background:
-
-```
-  5: 2025-09-14 | Holiday
-```
-
----
-
-### List sessions
-
-All:
-
+### List sessions (legacy view)
 ```bash
-rtimelog list
+rtimelog list                # all
+rtimelog list --period 2025  # year
+rtimelog list --period 2025-09  # year-month
+rtimelog list --pos o        # position (case-insensitive)
 ```
 
-By year:
-
+### List raw events
 ```bash
-rtimelog list --period 2025
+rtimelog list --events
+rtimelog list --events --pos r          # filter by position
+rtimelog list --events --pairs 2        # only pair 2 (per date)
+rtimelog list --events --json           # raw JSON with pair & unmatched
 ```
 
-By year and month:
-
+### Summarize events per pair
 ```bash
-rtimelog list --period 2025-09
+rtimelog list --events --summary
+rtimelog list --events --summary --pairs 1
+rtimelog list --events --summary --json
 ```
 
-For working position (O, R, H). You can specify the position in either uppercase or lowercase:
-
-```bash
-rtimelog list --pos O
-rtimelog list --pos R
-rtimelog list --pos H
-```
-
----
-
-Delete a session `id`
-
-Remove a session by its `id`:
-
+### Delete a session by id
 ```bash
 rtimelog del 1
 ```
 
+### Internal log
+```bash
+rtimelog log --print
+```
+
 ---
 
-## ⚙️ Configuration
+## Event mode – behavior details
+- **Pair numbering** restarts each date.
+- **Unmatched** rows (only `in` or only `out`) show `*` and `duration_minutes = 0` in summary.
+- **Lunch minutes** shown on the `out` event (and propagated to summary) if provided or auto-deduced.
+- **Filtering precedence**: `--pairs` applies *after* computing pairs; combining with `--summary` reduces summary rows.
+- **JSON schemas**:
+  - Raw events: fields from DB + `pair`, `unmatched`.
+  - Summary: `date, pair, position, start, end, lunch_minutes, duration_minutes, unmatched`.
 
-When you run rtimelog init, a configuration file is created in your home directory:
+---
 
-- **Linux/macOS**: `$HOME/.rtimelog/rtimelog.conf`
-- **Windows**: `%APPDATA%\rtimelog\rtimelog.conf`
-
-### Example rtimelog.conf
-
-```yaml
-database: "/home/user/.rtimelog/rtimelog.sqlite"
-default_position: "O"
-min_duration_lunch_break: 30
-max_duration_lunch_break: 90
-```
-
-**Parameters**:
-
-- database: path of the SQLite database used by the application.
-- default_position: default working position (O, R, C, H).
-- min_duration_lunch_break: minimum lunch break in minutes (default: 30).
-- max_duration_lunch_break: maximum lunch break in minutes (default: 90).
-
-### Print the current configuration
-
-You can print the absolute path of the configuration file and its contents with:
-
-```bash
-rtimelog conf --print
-```
-
-Output example:
-
-```vbnet
-📄 Config file: /home/user/.rtimelog/rtimelog.conf
-database: "/home/user/.rtimelog/rtimelog.sqlite"
-default_position: "O"
-min_duration_lunch_break: 30
-max_duration_lunch_break: 90
-```
-
-### Edit the configuration
-
-You can edit the configuration file directly from the CLI:
-
-- With the default editor of your platform:
-  ```bash
-  rtimelog conf --edit
-  ```
-- With a specific editor (e.g. `vi`):
-  ```bash
-  rtimelog conf --edit --editor vi
-  ```
-
-If the requested editor is not available on the platform, the file will be opened with the **default system editor**.
-
-⚠️ On **Linux/macOS**, the default editor is taken from the `$EDITOR` environment variable.
-If `$EDITOR` is not set, the system default editor (e.g. `nano`) will be used.
-
-⚠️ On **Windows**, if you want to use an editor installed under `Program Files` (e.g. `Notepad++`), you must provide the
-**absolute path** in quotes:
-
-```ps
-rtimelog conf --edit --editor "C:\Program Files\Notepad++\notepad++.exe"
-```
+## ⚙️ Configuration (duplicate quick ref)
+(See above primary configuration section.)
 
 ---
 
 ## 🗄️ Database migrations
-
-Starting from **v0.3.3**, `rTimelog` manages its own internal DB versioning:
-
-- A dedicated table `schema_migrations` tracks all migrations applied.
-- On every command execution (`init`, `add`, `list`, `del`), the application checks if the database schema is outdated.
-- If pending migrations are found, they are applied automatically before continuing.
-
-This ensures that older databases remain compatible with newer versions of the application without manual intervention.
+*(unchanged – see CHANGELOG for past versions)*
 
 ---
 
 ## ⚠️ Notes
-
-- Lunchtime is validated: minimum 30 minutes, maximum 90 minutes for Office (O) position.
-- Holidays (H) ignore work and lunch logic, and are displayed as Holiday in purple background.
-- The --db global option allows selecting a custom database per execution, useful for testing or separate datasets.
+- Lunch validation: min 30, max 90 (Office only mandatory). Remote can specify 0.
+- Holidays ignore start/end/lunch; still appear in sessions listing.
+- `--db` allows isolated datasets (useful for testing).
 
 ---
 
-## 📊 Output example
-
+## 📊 Legacy session output example
 ```
 📅 Saved sessions for September 2025:
   1: 2025-09-01 | Remote           | Start 09:08 | Lunch 00:30 | End 17:30 | Expected 17:14 | Surplus  +16 min
@@ -277,129 +288,41 @@ This ensures that older databases remain compatible with newer versions of the a
   6: 2025-09-18 | Remote           | Start 10:50 | Lunch   -   | End   -   | Expected 18:56 | Surplus    -
   7: 2025-09-19 | Holiday          | Start   -   | Lunch   -   | End   -   | Expected   -   | Surplus    - min
   8: 2025-09-22 | Holiday          | Start   -   | Lunch   -   | End   -   | Expected   -   | Surplus    - min
- 
-                                                                                     -------------------------
-                                                                                     Σ Total surplus:  -17 min
- ```
+```
 
 ---
 
 ## Output formatting: month-end separator
-
-Starting from version 0.3.5, you can configure which character is used to draw the separator printed after the last day of each month in the `list` output.
-
-- Configuration key: `separator_char`
-- Default: `"-"`
-
-Example in `rtimelog.conf`:
-
-```yaml
-database: "/home/user/.rtimelog/rtimelog.sqlite"
-default_position: "O"
-min_duration_lunch_break: 30
-max_duration_lunch_break: 90
-separator_char: "#"
-```
-
-If `separator_char` is not present in the configuration file, the application migration will insert the default value automatically on first run.
+(See `separator_char` in configuration.)
 
 ---
 
 ## 🧪 Tests
-
 Run all tests:
-
 ```bash
 cargo test --all
 ```
-
-Tests include:
-
-- DB initialization
-- Adding and listing work sessions
-- Handling of holidays
-- Configurable working time
-- Migration compatibility
+Include coverage for: sessions CRUD, events pairing, summary, JSON, holidays, migrations.
 
 ---
 
 ## 📦 Installation
-
-### From source
-
 ```bash
 git clone https://github.com/umpire274/rTimelog.git
 cd rTimelog
 cargo build --release
 ```
-
-Binaries will be in `target/release/`.
-
-### Precompiled binaries
-
-Available on the [GitHub Releases](https://github.com/umpire274/rTimelog/releases) page.
+Binaries in `target/release/` or use releases page.
 
 ---
 
 ## 📜 License
-
-MIT License.  
-See [LICENSE](LICENSE) for details.
+MIT License – see [LICENSE](LICENSE).
 
 ---
 
-### Log (internal)
-
-Print the rows from the internal `log` table (date, function, message):
-
+### Internal Log Recap
 ```bash
 rtimelog log --print
 ```
-
-What is recorded
-
-- Columns: `id` (autoincrement), `date` (ISO 8601 timestamp), `function` (string), `message` (string).
-- When the application now writes to the `log` table:
-  - `init`: written when the database/config is initialized. Message examples:
-    - `Database initialized at C:\Users\...\rtimelog.sqlite`
-    - `Test DB initialized at C:\Users\...\AppData\Local\Temp\...` (when using `--test`).
-  - `add`: written when the `add` command applies changes for a date. Message format is concise and machine-friendly:
-    - `date=YYYY-MM-DD | key=val, key=val, ...`
-    - Example: `date=2025-09-30 | start=09:00, lunch=30`
-  - `del`: written when a session is deleted:
-    - Example: `Deleted session id 42`
-
-Behavioral notes
-
-- Each entry recorded by `db::ttlog` includes a timestamp (generated with `Utc::now().to_rfc3339()` — ISO 8601).
-- Writing to the `log` table is non-fatal: if the insert fails the command will still continue and a warning is printed to stderr.
-- The `log` table is intended for lightweight diagnostics and audit; messages are kept simple text to be human-readable but follow a predictable format for the `add` case.
-
-Examples
-
-1) Initialize a DB and inspect the log:
-
-```bash
-rtimelog --db /path/to/rtimelog.sqlite init
-rtimelog --db /path/to/rtimelog.sqlite log --print
-# Output example:
-#  1: 2025-09-30T12:34:56+00:00 | init | Database initialized at /path/to/rtimelog.sqlite
-```
-
-2) Add some data and inspect the log:
-
-```bash
-rtimelog --db /path/to/rtimelog.sqlite add 2025-09-30 O 09:00 30 17:00
-rtimelog --db /path/to/rtimelog.sqlite log --print
-# Possible log line:
-#  2: 2025-09-30T12:36:12+00:00 | add | date=2025-09-30 | start=09:00, lunch=30, end=17:00
-```
-
-3) Delete a session and inspect the log:
-
-```bash
-rtimelog --db /path/to/rtimelog.sqlite del 1
-rtimelog --db /path/to/rtimelog.sqlite log --print
-# Possible log line:
-#  3: 2025-09-30T12:40:00+00:00 | del | Deleted session id 1
-```
+Records concise audit lines for `init`, `add`, `del` and auto-lunch adjustments.

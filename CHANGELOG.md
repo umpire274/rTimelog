@@ -1,5 +1,41 @@
 # Changelog
 
+# [0.4.0] - 2025-10-02
+
+### Added
+
+- Event pair aggregation features:
+  - Derived **Pair** column when listing events (sequential pairing of `in` with next `out` per date, FIFO).
+  - `--pairs <id>` filter to show only events (or summaries) for a specific pair id.
+  - `--summary` mode (only with `--events`) to display one aggregated row per pair (start, end, lunch, net duration, unmatched flag).
+  - Enriched JSON output (`--events --json` and `--events --summary --json`) including fields: `pair`, `unmatched`, `lunch_minutes`, `duration_minutes` (summary mode).
+- Unmatched event handling: lone `in` or `out` events are marked with an asterisk (`*`) after the pair id and `"unmatched": true` in JSON.
+- Case‑insensitive normalization for `--pos` filter when listing events/sessions (`r` / `R` behave the same).
+- Automatic dual-write: `add --in/--out` now (still) logs legacy session data and inserts punch events used by the new reporting features.
+- New integration tests covering:
+  - Pair calculation and filtering
+  - Summary (basic, filtered, JSON, unmatched)
+  - Enriched JSON schema
+  - Case-insensitive position filter for events
+
+### Changed
+
+- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`, summary/table printers).
+- Improved output alignment for event and summary tables.
+- Internal minor cleanups (pattern matching adjustments for 2024 edition, separator printing, warning removal).
+
+### Fixed
+
+- Proper representation of unmatched events; they no longer appear merged with unrelated pairs.
+- Prevented spurious formatting warnings in summary table output.
+
+### Notes
+
+- No breaking schema changes: all new capabilities are additive and backward‑compatible with existing databases.
+- Legacy session listing (`list`) remains unchanged; new functionality is activated only with `--events`.
+
+---
+
 # [0.3.6] - 2025-09-30
 
 ### Added

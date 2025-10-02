@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::db;
 use chrono::Utc;
-use rusqlite::{Connection, Error, OptionalExtension, ffi};
+use rusqlite::{Connection, Error, OptionalExtension, ffi, params};
 use serde_yaml::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -70,6 +70,16 @@ static ALL_MIGRATIONS: &[Migration] = &[
         version: "20251001_0005_add_separator_char_to_config",
         description: "Add separator_char default to configuration file if missing",
         up: migrate_to_035_rel,
+    },
+    Migration {
+        version: "20251010_0006_create_events_table",
+        description: "Create events table to store time punches (in/out) with position and lunch",
+        up: migrate_to_036_create_events,
+    },
+    Migration {
+        version: "20251015_0007_migrate_work_sessions_to_events",
+        description: "Migrate existing work_sessions rows into events (idempotent, source='migration')",
+        up: migrate_to_037_migrate_work_sessions_to_events,
     },
 ];
 
@@ -328,6 +338,97 @@ fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
             println!("✅ Config file updated with separator_char: {:?}", path);
         }
     }
+
+    Ok(())
+}
+
+fn migrate_to_036_create_events(conn: &Connection) -> rusqlite::Result<()> {
+    // Create a flexible events table that stores in/out punches, associated position and an optional lunch value
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN ('in','out')),
+            position TEXT NOT NULL DEFAULT 'O' CHECK(position IN ('O','R','H','C')),
+            lunch_break INTEGER NOT NULL DEFAULT 0,
+            source TEXT NOT NULL DEFAULT 'cli',
+            meta TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_date_time ON events(date, time);
+        CREATE INDEX IF NOT EXISTS idx_events_date_kind ON events(date, kind);
+        ",
+    )?;
+
+    db::ttlog(conn, "migrate_to_036_create_events", "Created events table")?;
+    println!("✅ Created events table");
+
+    Ok(())
+}
+
+fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite::Result<()> {
+    // Idempotent migration: for each work_sessions row, insert corresponding in/out events
+    // only if they don't already exist in events. Mark source='migration'.
+    let mut select_ws = conn.prepare(
+        "SELECT id, date, position, start_time, lunch_break, end_time FROM work_sessions",
+    )?;
+    let ws_rows = select_ws.query_map([], |row| {
+        Ok((
+            row.get::<_, i32>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, i32>(4)?,
+            row.get::<_, String>(5)?,
+        ))
+    })?;
+
+    let mut inserted = 0i32;
+    for r in ws_rows {
+        let (_id, date, position, start_time, lunch_break, end_time) = r?;
+
+        // Insert start event if present and not already migrated
+        if !start_time.trim().is_empty() {
+            let exists: Option<i32> = conn
+                .query_row(
+                    "SELECT id FROM events WHERE date = ?1 AND time = ?2 AND kind = 'in' AND source = 'migration' LIMIT 1",
+                    params![&date, &start_time],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if exists.is_none() {
+                conn.execute(
+                    "INSERT INTO events (date, time, kind, position, lunch_break, source, meta, created_at) VALUES (?1, ?2, 'in', ?3, 0, 'migration', '', ?4)",
+                    params![&date, &start_time, &position, Utc::now().to_rfc3339()],
+                )?;
+                inserted += 1;
+            }
+        }
+
+        // Insert end event if present and not already migrated
+        if !end_time.trim().is_empty() {
+            let exists: Option<i32> = conn
+                .query_row(
+                    "SELECT id FROM events WHERE date = ?1 AND time = ?2 AND kind = 'out' AND source = 'migration' LIMIT 1",
+                    params![&date, &end_time],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if exists.is_none() {
+                conn.execute(
+                    "INSERT INTO events (date, time, kind, position, lunch_break, source, meta, created_at) VALUES (?1, ?2, 'out', ?3, ?4, 'migration', '', ?5)",
+                    params![&date, &end_time, &position, lunch_break, Utc::now().to_rfc3339()],
+                )?;
+                inserted += 1;
+            }
+        }
+    }
+
+    let msg = format!("migrated {} event(s) from work_sessions", inserted);
+    db::ttlog(conn, "migrate_to_037_migrate_work_sessions_to_events", &msg)?;
+    println!("✅ {}", msg);
 
     Ok(())
 }
