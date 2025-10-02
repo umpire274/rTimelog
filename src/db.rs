@@ -206,3 +206,25 @@ pub fn get_session(conn: &Connection, id: i32) -> Result<Option<WorkSession>> {
         Err(e) => Err(e),
     }
 }
+
+/// Retrieve work sessions for a specific date
+pub fn list_sessions_by_date(conn: &Connection, date: &str) -> Result<Vec<WorkSession>> {
+    let query = "SELECT id, date, position, start_time, lunch_break, end_time FROM work_sessions WHERE date = ?1 ORDER BY date ASC";
+    let mut stmt = conn.prepare_cached(query)?;
+    let rows = stmt.query_map([date], |row| {
+        Ok(WorkSession {
+            id: row.get(0)?,
+            date: row.get(1)?,
+            position: row.get(2)?,
+            start: row.get(3)?,
+            lunch: row.get(4)?,
+            end: row.get(5)?,
+        })
+    })?;
+
+    let mut sessions = Vec::new();
+    for s in rows {
+        sessions.push(s?);
+    }
+    Ok(sessions)
+}

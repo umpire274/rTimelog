@@ -265,9 +265,149 @@ pub fn handle_add(cmd: &Commands, conn: &Connection, config: &Config) -> rusqlit
 pub fn handle_list(
     period: Option<String>,
     pos: Option<String>,
+    now: bool,
     conn: &Connection,
     config: &Config,
 ) -> rusqlite::Result<()> {
+    if now {
+        // Get today's date in YYYY-MM-DD
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let sessions = db::list_sessions_by_date(conn, &today)?;
+        if sessions.is_empty() {
+            println!("No record for today.");
+            return Ok(());
+        }
+
+        // Print a small header indicating today's records
+        println!("📅 Today's session(s):");
+
+        let mut total_surplus = 0;
+        let work_minutes = utils::parse_work_duration_to_minutes(&config.min_work_duration);
+        let sep_ch = config.separator_char.chars().next().unwrap_or('-');
+
+        for s in sessions {
+            let (pos_string, pos_color) = describe_position(s.position.as_str());
+            let has_start = !s.start.trim().is_empty();
+            let has_end = !s.end.trim().is_empty();
+
+            if has_start && !has_end {
+                let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+
+                let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
+                let lunch_str = if s.lunch > 0 {
+                    mins2hhmm(s.lunch)
+                } else {
+                    "-".to_string()
+                };
+                let lunch_fmt = format!("{:^5}", lunch_str);
+
+                let end_color = if !s.end.is_empty() {
+                    "\x1b[0m"
+                } else {
+                    "\x1b[90m"
+                };
+                let end_str = if !s.end.is_empty() {
+                    s.end
+                } else {
+                    "-".to_string()
+                };
+                let end_fmt = format!("{:^5}", end_str);
+
+                println!(
+                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                    s.id,
+                    s.date,
+                    pos_color,
+                    pos_string,
+                    s.start,
+                    lunch_color,
+                    lunch_fmt,
+                    end_color,
+                    end_fmt,
+                    expected.format("%H:%M"),
+                    "-",
+                );
+                if utils::is_last_day_of_month(&s.date) {
+                    print_separator(sep_ch, 25, 110);
+                }
+            } else if has_start && has_end {
+                let _start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
+                let _end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
+                let pos_char = s.position.chars().next().unwrap_or('O');
+                let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
+
+                let effective_lunch =
+                    logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char, config);
+
+                if crosses_lunch && effective_lunch > 0 {
+                    let expected =
+                        logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
+                    let surplus =
+                        logic::calculate_surplus(&s.start, effective_lunch, &s.end, work_minutes);
+                    let surplus_minutes = surplus.num_minutes();
+                    total_surplus += surplus_minutes;
+
+                    let color_code = if surplus_minutes < 0 {
+                        "\x1b[31m"
+                    } else {
+                        "\x1b[32m"
+                    };
+                    println!(
+                        "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                        s.id,
+                        s.date,
+                        pos_color,
+                        pos_string,
+                        s.start,
+                        mins2hhmm(effective_lunch),
+                        s.end,
+                        expected.format("%H:%M"),
+                        color_code,
+                        format!("{}m", surplus_minutes),
+                    );
+                } else {
+                    let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+                    let surplus = logic::calculate_surplus(&s.start, s.lunch, &s.end, work_minutes);
+                    let surplus_minutes = surplus.num_minutes();
+                    total_surplus += surplus_minutes;
+                    let color_code = if surplus_minutes < 0 {
+                        "\x1b[31m"
+                    } else {
+                        "\x1b[32m"
+                    };
+                    println!(
+                        "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                        s.id,
+                        s.date,
+                        pos_color,
+                        pos_string,
+                        s.start,
+                        mins2hhmm(s.lunch),
+                        s.end,
+                        expected.format("%H:%M"),
+                        color_code,
+                        format!("{}m", surplus_minutes),
+                    );
+                }
+
+                if utils::is_last_day_of_month(&s.date) {
+                    print_separator(sep_ch, 25, 110);
+                }
+            } else {
+                // No start -> print minimal info
+                println!(
+                    "{:>3}: {} | {}{:<16}\x1b[0m | -",
+                    s.id, s.date, pos_color, pos_string
+                );
+            }
+        }
+
+        // Summary
+        println!("\nSummary surplus: {}m", total_surplus);
+
+        return Ok(());
+    }
+
     handle_list_with_highlight(period, pos, conn, config, None)
 }
 
@@ -380,8 +520,8 @@ pub fn handle_list_with_highlight(
                 print_separator(sep_ch, 25, 110);
             }
         } else if has_start && has_end {
-            let start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
-            let end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
+            let _start_time = NaiveTime::parse_from_str(&s.start, "%H:%M").unwrap();
+            let _end_time = NaiveTime::parse_from_str(&s.end, "%H:%M").unwrap();
             let pos_char = s.position.chars().next().unwrap_or('O');
             let crosses_lunch = logic::crosses_lunch_window(&s.start, &s.end);
 
@@ -436,7 +576,7 @@ pub fn handle_list_with_highlight(
                     print_separator(sep_ch, 25, 110);
                 }
             } else {
-                let duration = end_time - start_time;
+                let duration = _end_time - _start_time;
                 let lunch_fmt = format!("{:^5}", "-".to_string());
 
                 println!(

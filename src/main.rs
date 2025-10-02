@@ -100,6 +100,10 @@ enum Commands {
         /// Filter by position (O=Office, R=Remote, H=Holiday)
         #[arg(long)]
         pos: Option<String>,
+
+        /// Show only today's record (if present)
+        #[arg(long = "now", help = "Show only today's record")]
+        now: bool,
     },
 }
 
@@ -144,7 +148,7 @@ fn main() -> rusqlite::Result<()> {
             separator_char: "-".to_string(),
         }
     } else {
-        // For production we load the configuration from disk.
+        // For production, we load the configuration from disk.
         Config::load()
     };
 
@@ -169,8 +173,8 @@ fn main() -> rusqlite::Result<()> {
         Commands::Log { .. } => commands::handle_log(&cli.command, &conn),
         Commands::Add { .. } => commands::handle_add(&cli.command, &conn, &config),
         Commands::Del { .. } => commands::handle_del(&cli.command, &conn),
-        Commands::List { period, pos } => {
-            commands::handle_list(period.clone(), pos.clone(), &conn, &config)
+        Commands::List { period, pos, now } => {
+            commands::handle_list(period.clone(), pos.clone(), *now, &conn, &config)
         }
         _ => Ok(()),
     }
