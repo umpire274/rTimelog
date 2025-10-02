@@ -274,7 +274,7 @@ pub fn handle_list(
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let sessions = db::list_sessions_by_date(conn, &today)?;
         if sessions.is_empty() {
-            println!("No record for today.");
+            println!("⚠️  No record for today.");
             return Ok(());
         }
 
