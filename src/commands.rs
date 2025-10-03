@@ -268,7 +268,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
 
             if let Some(p) = pos.as_ref() {
                 let p_norm = p.trim().to_uppercase();
-                if p_norm != "O" && p_norm != "R" && p_norm != "H" && p_norm != "C" {
+                if p_norm != "O" && p_norm != "R" && p_norm != "H" && p_norm != "C" && p_norm != "M"
+                {
                     eprintln!("\u{274c} Invalid position: {}", p_norm);
                     return Ok(());
                 }
@@ -278,11 +279,26 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 if let Some(oe) = out_event.as_ref() {
                     let _ = db::set_event_position(conn, oe.id, &p_norm);
                 }
-                let _ = db::force_set_position(conn, date, &p_norm);
-                println!(
-                    "\u{2705} Position {} set for {} (pair {})",
-                    p_norm, date, pair_id
-                );
+                // After updating event positions, compute aggregate across all events for that date
+                match db::aggregate_position_from_events(conn, date) {
+                    Ok(Some(agg)) => {
+                        // If aggregate is a single char (O/R/H/C/M), force it into work_sessions
+                        let _ = db::force_set_position(conn, date, &agg);
+                        println!(
+                            "\u{2705} Position {} set for {} (pair {})",
+                            agg, date, pair_id
+                        );
+                    }
+                    Ok(None) => {
+                        // No events for this date (unlikely here) -> fall back to provided p_norm
+                        let _ = db::force_set_position(conn, date, &p_norm);
+                        println!(
+                            "\u{2705} Position {} set for {} (pair {})",
+                            p_norm, date, pair_id
+                        );
+                    }
+                    Err(e) => eprintln!("\u{26a0}\u{FE0F} Failed to aggregate positions: {}", e),
+                }
                 changes.push(format!("pos={}", p_norm));
             }
 
@@ -368,6 +384,10 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Err(e) = db::add_event(conn, &args, config) {
                 eprintln!("\u{26a0}\u{FE0F} Failed to insert event (in): {}", e);
             }
+            // After creating an event, recompute aggregated position and set work_sessions appropriately
+            if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
+                let _ = db::force_set_position(conn, date, &agg);
+            }
         }
 
         // Handle lunch
@@ -421,6 +441,10 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Err(err) = db::add_event(conn, &args, config) {
                 eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
             }
+            // Recompute aggregate position after inserting out event
+            if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
+                let _ = db::force_set_position(conn, date, &agg);
+            }
         }
 
         if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
@@ -429,6 +453,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             );
         }
 
+        // If the user provided only --pos (no events), keep existing behavior; otherwise aggregate handled above.
         // Recupera l'id dell'ultima sessione per la data fornita e stampa
         match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
         {

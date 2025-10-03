@@ -97,7 +97,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             date         TEXT NOT NULL,          -- YYYY-MM-DD
-            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C')),
+            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C','M')),
             start_time   TEXT NOT NULL DEFAULT '',
             lunch_break  INTEGER NOT NULL DEFAULT 0,
             end_time     TEXT NOT NULL DEFAULT ''
@@ -115,7 +115,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             date TEXT NOT NULL,          -- YYYY-MM-DD
             time TEXT NOT NULL,          -- HH:MM
             kind TEXT NOT NULL CHECK (kind IN ('in','out')),
-            position TEXT NOT NULL CHECK (position IN ('O','R','H','C')),
+            position TEXT NOT NULL CHECK (position IN ('O','R','H','C','M')),
             lunch_break INTEGER NOT NULL DEFAULT 0, -- minutes, typically set on out
             source TEXT NOT NULL,
             meta TEXT,
@@ -125,6 +125,28 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     )?;
     run_pending_migrations(conn)?;
     Ok(())
+}
+
+/// Aggregate the day's position using events: if no events, returns None.
+/// If all event positions are the same, returns that position ("O","R","H","C").
+/// If multiple distinct positions exist, returns "M" for Mixed.
+pub fn aggregate_position_from_events(conn: &Connection, date: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare_cached("SELECT DISTINCT position FROM events WHERE date = ?1")?;
+    let rows = stmt.query_map([date], |row| row.get::<_, String>(0))?;
+    let mut distinct: Vec<String> = Vec::new();
+    for r in rows {
+        distinct.push(r?);
+    }
+    if distinct.is_empty() {
+        return Ok(None);
+    }
+    distinct.sort();
+    distinct.dedup();
+    if distinct.len() == 1 {
+        Ok(Some(distinct[0].clone()))
+    } else {
+        Ok(Some("M".to_string()))
+    }
 }
 
 /// Insert a new work session
