@@ -97,7 +97,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             date         TEXT NOT NULL,          -- YYYY-MM-DD
-            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C')),
+            position     TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C','M')),
             start_time   TEXT NOT NULL DEFAULT '',
             lunch_break  INTEGER NOT NULL DEFAULT 0,
             end_time     TEXT NOT NULL DEFAULT ''
@@ -115,7 +115,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             date TEXT NOT NULL,          -- YYYY-MM-DD
             time TEXT NOT NULL,          -- HH:MM
             kind TEXT NOT NULL CHECK (kind IN ('in','out')),
-            position TEXT NOT NULL CHECK (position IN ('O','R','H','C')),
+            position TEXT NOT NULL CHECK (position IN ('O','R','H','C','M')),
             lunch_break INTEGER NOT NULL DEFAULT 0, -- minutes, typically set on out
             source TEXT NOT NULL,
             meta TEXT,
@@ -125,6 +125,28 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     )?;
     run_pending_migrations(conn)?;
     Ok(())
+}
+
+/// Aggregate the day's position using events: if no events, returns None.
+/// If all event positions are the same, returns that position ("O","R","H","C").
+/// If multiple distinct positions exist, returns "M" for Mixed.
+pub fn aggregate_position_from_events(conn: &Connection, date: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare_cached("SELECT DISTINCT position FROM events WHERE date = ?1")?;
+    let rows = stmt.query_map([date], |row| row.get::<_, String>(0))?;
+    let mut distinct: Vec<String> = Vec::new();
+    for r in rows {
+        distinct.push(r?);
+    }
+    if distinct.is_empty() {
+        return Ok(None);
+    }
+    distinct.sort();
+    distinct.dedup();
+    if distinct.len() == 1 {
+        Ok(Some(distinct[0].clone()))
+    } else {
+        Ok(Some("M".to_string()))
+    }
 }
 
 /// Insert a new work session
@@ -146,6 +168,31 @@ pub fn add_session(
 
 pub fn delete_session(conn: &Connection, id: i32) -> Result<usize> {
     conn.execute("DELETE FROM work_sessions WHERE id = ?", [id])
+}
+
+/// Delete all work_sessions for a given date. Returns number of rows deleted.
+pub fn delete_sessions_by_date(conn: &Connection, date: &str) -> Result<usize> {
+    conn.execute("DELETE FROM work_sessions WHERE date = ?1", params![date])
+}
+
+/// Delete all events for a given date. Returns number of rows deleted.
+pub fn delete_events_by_date(conn: &Connection, date: &str) -> Result<usize> {
+    conn.execute("DELETE FROM events WHERE date = ?1", params![date])
+}
+
+/// Delete events by a list of ids. Returns number of rows deleted.
+pub fn delete_events_by_ids(conn: &Connection, ids: &[i32]) -> Result<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    // Build a query with the appropriate number of placeholders
+    let mut sql = String::from("DELETE FROM events WHERE id IN (");
+    sql.push_str(&vec!["?"; ids.len()].join(","));
+    sql.push(')');
+    let params_vec: Vec<&dyn ToSql> = ids.iter().map(|i| i as &dyn ToSql).collect();
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let changed = stmt.execute(rusqlite::params_from_iter(params_vec))?;
+    Ok(changed)
 }
 
 /// Return all saved work sessions, optionally filtered by year or year-month.
@@ -554,4 +601,124 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
     }
 
     Ok(sessions)
+}
+
+/// Delete events by ids and recompute/update work_sessions for the given date atomically.
+/// Returns the number of deleted event rows.
+pub fn delete_events_by_ids_and_recompute_sessions(
+    conn: &mut Connection,
+    ids: &[i32],
+    date: &str,
+) -> Result<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn.transaction()?;
+
+    // Execute delete inside a narrow scope so statement is dropped early
+    let deleted = {
+        // Build delete SQL
+        let mut sql = String::from("DELETE FROM events WHERE id IN (");
+        sql.push_str(&vec!["?"; ids.len()].join(","));
+        sql.push(')');
+        let params_vec: Vec<&dyn ToSql> = ids.iter().map(|i| i as &dyn ToSql).collect();
+        let mut del_stmt = tx.prepare(&sql)?;
+
+        del_stmt.execute(rusqlite::params_from_iter(params_vec))?
+    };
+
+    // Query remaining events for the date inside the same transaction; keep statement scoped
+    let mut remaining: Vec<Event> = Vec::new();
+    {
+        let mut sel = tx.prepare(
+            "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 ORDER BY time ASC",
+        )?;
+        let remaining_rows = sel.query_map([date], row_to_event)?;
+        for r in remaining_rows {
+            remaining.push(r?);
+        }
+        // sel and remaining_rows dropped here
+    }
+
+    if remaining.is_empty() {
+        // delete work_sessions row(s) for date
+        tx.execute("DELETE FROM work_sessions WHERE date = ?1", params![date])?;
+    } else {
+        // end_time = max time among remaining events
+        if let Some(max_time) = remaining.iter().map(|e| e.time.clone()).max() {
+            // Update or insert end_time via existing helper using the transaction
+            // We'll use direct SQL to update within the tx (force_set_end uses Connection methods)
+            let changed = tx.execute(
+                "UPDATE work_sessions SET end_time = ?1 WHERE date = ?2",
+                params![&max_time, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position, end_time) VALUES (?1, ?2, ?3)",
+                    params![date, "O", &max_time],
+                )?;
+            }
+        }
+
+        // start_time: choose earliest 'in' if any, otherwise earliest event time
+        let min_time_opt = remaining
+            .iter()
+            .filter(|e| e.kind == "in")
+            .map(|e| e.time.clone())
+            .min()
+            .or_else(|| remaining.iter().map(|e| e.time.clone()).min());
+        if let Some(min_time) = min_time_opt {
+            let changed = tx.execute(
+                "UPDATE work_sessions SET start_time = ?1 WHERE date = ?2",
+                params![&min_time, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position, start_time) VALUES (?1, ?2, ?3)",
+                    params![date, "O", &min_time],
+                )?;
+            }
+        }
+
+        // lunch_break: get the latest 'out' event (max time among kind='out') and use its lunch_break
+        let last_out = remaining
+            .iter()
+            .filter(|e| e.kind == "out")
+            .max_by(|a, b| a.time.cmp(&b.time));
+        if let Some(out_ev) = last_out {
+            let lunch_val = out_ev.lunch_break;
+            let changed = tx.execute(
+                "UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2",
+                params![lunch_val, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position, lunch_break) VALUES (?1, ?2, ?3)",
+                    params![date, "O", lunch_val],
+                )?;
+            }
+        }
+
+        // position: if all remaining events share same position, set it; otherwise leave as-is
+        let mut positions: Vec<String> = remaining.iter().map(|e| e.position.clone()).collect();
+        positions.sort();
+        positions.dedup();
+        if positions.len() == 1 {
+            let pos = &positions[0];
+            let changed = tx.execute(
+                "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
+                params![pos, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+                    params![date, pos],
+                )?;
+            }
+        }
+    }
+
+    tx.commit()?;
+    Ok(deleted)
 }

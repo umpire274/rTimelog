@@ -96,6 +96,11 @@ pub fn describe_position(pos: &str) -> (String, String) {
             let colored = "\x1b[45;97;1m".to_string();
             (label, colored)
         }
+        "M" => {
+            let label = "Mixed".to_string();
+            let colored = "\x1b[35m".to_string(); // magenta
+            (label, colored)
+        }
         _ => {
             let label = pos.to_string();
             (label.clone(), "\x1b[0m".to_string()) // fallback senza colore

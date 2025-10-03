@@ -5,6 +5,7 @@ use r_timelog::config::Config;
 use r_timelog::utils::{describe_position, mins2hhmm, print_separator};
 use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
+use std::io::{Write, stdin};
 use std::process::Command;
 
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
@@ -118,20 +119,99 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
-    if let Commands::Del { id } = cmd {
-        match db::delete_session(conn, *id) {
-            Ok(rows) => {
-                if rows > 0 {
-                    println!("🗑️  Session with ID {} deleted", id);
-                    if let Err(e) = db::ttlog(conn, "del", &format!("Deleted session id {}", id)) {
-                        eprintln!("⚠️ Failed to write internal log: {}", e);
-                    }
-                } else {
-                    println!("⚠️  No session found with ID {}", id);
-                }
+pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()> {
+    if let Commands::Del { pair, date } = cmd {
+        // validate date
+        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+            eprintln!(
+                "\u{274c} Invalid date format: {} (expected YYYY-MM-DD)",
+                date
+            );
+            return Ok(());
+        }
+
+        if let Some(pair_id) = pair {
+            // Delete only a given pair for the specified date
+            let events = db::list_events_by_date(conn, date)?;
+            if events.is_empty() {
+                println!("⚠️  No events found for date {}", date);
+                return Ok(());
             }
-            Err(e) => eprintln!("❌ Error deleting session: {}", e),
+            let enriched = compute_event_pairs(&events);
+            let ids_to_delete: Vec<i32> = enriched
+                .iter()
+                .filter(|e| e.pair == *pair_id)
+                .map(|e| e.event.id)
+                .collect();
+
+            if ids_to_delete.is_empty() {
+                println!("⚠️  Pair {} not found for date {}", pair_id, date);
+                return Ok(());
+            }
+
+            // Confirmation prompt
+            print!(
+                "Are you sure to delete the pair {} of the date {} (N/y) ? ",
+                pair_id, date
+            );
+            let _ = std::io::stdout().flush();
+            let mut input = String::new();
+            stdin().read_line(&mut input).unwrap_or(0);
+            let choice = input.trim().to_lowercase();
+            if choice != "y" {
+                println!("Aborted. No rows deleted.");
+                return Ok(());
+            }
+
+            match db::delete_events_by_ids_and_recompute_sessions(conn, &ids_to_delete, date) {
+                Ok(rows) => {
+                    println!(
+                        "🗑️  Deleted {} event(s) for pair {} on {}",
+                        rows, pair_id, date
+                    );
+                    let _ = db::ttlog(
+                        conn,
+                        "del",
+                        &format!("Deleted {} events for date={} pair={}", rows, date, pair_id),
+                    );
+                }
+                Err(e) => eprintln!("❌ Error deleting pair events: {}", e),
+            }
+        } else {
+            // Delete all records for the date (work_sessions + events)
+            print!(
+                "Are you sure to delete the records of the date {} (N/y) ? ",
+                date
+            );
+            let _ = std::io::stdout().flush();
+            let mut input = String::new();
+            stdin().read_line(&mut input).unwrap_or(0);
+            let choice = input.trim().to_lowercase();
+            if choice != "y" {
+                println!("Aborted. No rows deleted.");
+                return Ok(());
+            }
+
+            match db::delete_events_by_date(conn, date) {
+                Ok(ev_rows) => match db::delete_sessions_by_date(conn, date) {
+                    Ok(ws_rows) => {
+                        println!(
+                            "🗑️  Deleted {} event(s) and {} work_session(s) for date {}",
+                            ev_rows, ws_rows, date
+                        );
+                        let _ = db::ttlog(
+                            conn,
+                            "del",
+                            &format!(
+                                "Deleted date={} events={} work_sessions={}",
+                                date, ev_rows, ws_rows
+                            ),
+                        );
+                    }
+                    Err(e) => eprintln!("❌ Error deleting work_sessions for date {}: {}", date, e),
+                },
+                Err(e) => eprintln!("❌ Error deleting events for date {}: {}", date, e),
+            }
         }
     }
     Ok(())
@@ -268,7 +348,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
 
             if let Some(p) = pos.as_ref() {
                 let p_norm = p.trim().to_uppercase();
-                if p_norm != "O" && p_norm != "R" && p_norm != "H" && p_norm != "C" {
+                if p_norm != "O" && p_norm != "R" && p_norm != "H" && p_norm != "C" && p_norm != "M"
+                {
                     eprintln!("\u{274c} Invalid position: {}", p_norm);
                     return Ok(());
                 }
@@ -278,11 +359,26 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 if let Some(oe) = out_event.as_ref() {
                     let _ = db::set_event_position(conn, oe.id, &p_norm);
                 }
-                let _ = db::force_set_position(conn, date, &p_norm);
-                println!(
-                    "\u{2705} Position {} set for {} (pair {})",
-                    p_norm, date, pair_id
-                );
+                // After updating event positions, compute aggregate across all events for that date
+                match db::aggregate_position_from_events(conn, date) {
+                    Ok(Some(agg)) => {
+                        // If aggregate is a single char (O/R/H/C/M), force it into work_sessions
+                        let _ = db::force_set_position(conn, date, &agg);
+                        println!(
+                            "\u{2705} Position {} set for {} (pair {})",
+                            agg, date, pair_id
+                        );
+                    }
+                    Ok(None) => {
+                        // No events for this date (unlikely here) -> fall back to provided p_norm
+                        let _ = db::force_set_position(conn, date, &p_norm);
+                        println!(
+                            "\u{2705} Position {} set for {} (pair {})",
+                            p_norm, date, pair_id
+                        );
+                    }
+                    Err(e) => eprintln!("\u{26a0}\u{FE0F} Failed to aggregate positions: {}", e),
+                }
                 changes.push(format!("pos={}", p_norm));
             }
 
@@ -368,6 +464,10 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Err(e) = db::add_event(conn, &args, config) {
                 eprintln!("\u{26a0}\u{FE0F} Failed to insert event (in): {}", e);
             }
+            // After creating an event, recompute aggregated position and set work_sessions appropriately
+            if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
+                let _ = db::force_set_position(conn, date, &agg);
+            }
         }
 
         // Handle lunch
@@ -421,6 +521,10 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Err(err) = db::add_event(conn, &args, config) {
                 eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
             }
+            // Recompute aggregate position after inserting out event
+            if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
+                let _ = db::force_set_position(conn, date, &agg);
+            }
         }
 
         if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
@@ -429,6 +533,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             );
         }
 
+        // If the user provided only --pos (no events), keep existing behavior; otherwise aggregate handled above.
         // Recupera l'id dell'ultima sessione per la data fornita e stampa
         match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
         {

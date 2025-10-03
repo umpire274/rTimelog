@@ -38,3 +38,43 @@ pub fn create_missing_event(
         .find(|ev| ev.kind == kind_val && ev.time == time_val);
     Ok(found)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::db;
+    use rusqlite::Connection;
+
+    #[test]
+    fn test_create_missing_event_in_memory() {
+        // prepare in-memory DB and config
+        let mut conn = Connection::open_in_memory().expect("open in-memory");
+        // initialize schema and migrations
+        db::init_db(&conn).expect("init_db");
+
+        let config = Config {
+            database: ":memory:".to_string(),
+            default_position: "O".to_string(),
+            min_work_duration: "8h".to_string(),
+            min_duration_lunch_break: 30,
+            max_duration_lunch_break: 90,
+            separator_char: "-".to_string(),
+        };
+
+        // Ensure no events initially
+        let list0 = db::list_events_by_date(&conn, "2025-10-03").expect("list events");
+        assert!(list0.is_empty());
+
+        // Call helper to create an 'in' missing event
+        let pos = Some("R".to_string());
+        let created =
+            create_missing_event(&mut conn, "2025-10-03", "09:00", "in", &pos, None, &config)
+                .expect("create_missing_event");
+        assert!(created.is_some(), "expected event to be created");
+        let ev = created.unwrap();
+        assert_eq!(ev.kind, "in");
+        assert_eq!(ev.time, "09:00");
+        assert_eq!(ev.position, "R");
+    }
+}

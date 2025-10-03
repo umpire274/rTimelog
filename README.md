@@ -10,45 +10,23 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in v0.4.1
+## What's new in v0.4.2
 
-**Refactor, fixes and display improvements**
+**Delete-by-date/pair, mixed position and quality fixes**
 
-This micro-release cleans up duplicated code, improves testability and the user-facing duration format:
+This release brings safer deletion primitives, a new mixed position flag and a number of internal cleanups:
 
-- Refactored: extracted the `create_missing_event` helper into `src/events.rs` to make it reusable and easier to
-  unit-test.
-- Fixed: removed duplicated logic from `commands.rs` that caused compile-time errors, and consolidated event creation
-  paths.
-- Tests: added a focused unit test covering creation of missing events (now easier to test because the helper is exposed
-  to the events module).
-- Display: in `rtimelog list --events --summary` the `Dur` column is now shown as human-friendly hours/minutes (for
-  example `2h 30m`) instead of raw minutes. This is a presentation-only change; JSON output and internal representations
-  still use integer minutes (`duration_minutes`).
-- Cleanup: removed temporary tracking of `commit_msg.txt` and ensured commit messages are kept in English.
-
-```bash
-# Detailed events (raw punches)
-rtimelog list --events
-
-# Summarized per pair (start/end/lunch/duration, human-friendly Dur)
-rtimelog list --events --summary
-
-# JSON summary (durations still in minutes)
-rtimelog list --events --summary --json
-```
-
-### Sample (summary mode)
-
-```
-📊 Event pairs summary:
-Date        Pair  Pos  Start  End    Lunch  Dur
-----------  ----  ---  -----  -----  -----  --------
-2025-12-01  1     O    09:00  12:00     30  2h 30m
-2025-12-01  2     O    13:00  17:00      0  4h 00m
-```
-
-*Note: JSON output still contains `duration_minutes` expressed as integer minutes.*
+- New deletion mode:
+    - `del <date>` deletes all events and legacy `work_sessions` rows for the given date (interactive confirmation).
+    - `del --pair <pair> <date>` deletes only events belonging to the given pair for that date (interactive
+      confirmation). If no events remain for the date the legacy `work_sessions` row(s) are removed as well.
+- Database: introduced position value `M` (Mixed) to mark days with multiple positions and added a migration to extend
+  the CHECK constraints.
+- Code: extracted `create_missing_event` helper into `src/events.rs` (unit-tested) and removed duplicated logic from
+  `commands.rs`.
+- Tests: integration tests added/updated to cover deletion-by-date and deletion-by-pair behavior.
+- Lint: fixed a Clippy warning to allow `cargo clippy -D warnings` to pass.
+- `del` now records concise audit entries into the internal `log` table (visible with `rtimelog log --print`).
 
 ---
 
@@ -69,6 +47,7 @@ Date        Pair  Pos  Start  End    Lunch  Dur
     - `R` = **Remote**
     - `C` = **On-Site (Client)**
     - `H` = **Holiday**
+    - `M` = **Mixed** (multiple working positions on the same day)
 - Colorized output for better readability:
     - **Blue** = Office
     - **Cyan** = Remote
@@ -119,7 +98,7 @@ separator_char: "-"
 Key fields:
 
 - **database** → path to the SQLite DB file
-- **default_position** → default working position (`O`, `R`, `C`, `H`)
+- **default_position** → default working position (`O`, `R`, `C`, `H`, `M`)
 - **min_work_duration** → daily expected working time (e.g. `7h 36m`, `8h`)
 - **min_duration_lunch_break** / **max_duration_lunch_break** → lunch constraints (minutes)
 - **separator_char** → character used for month-end separator lines
@@ -203,16 +182,61 @@ rtimelog list --events --summary --pairs 1
 rtimelog list --events --summary --json
 ```
 
-### Delete a session by id
+### Sample output of summary mode
+
+```
+📊 Event pairs summary:
+Date        Pair  Pos  Start  End    Lunch  Dur
+----------  ----  ---  -----  -----  -----  --------
+2025-12-01  1     O    09:00  12:00     30  2H 30M
+2025-12-01  2     O    13:00  17:00      0  4H 00M
+```
+
+*Note: JSON output still contains `duration_minutes` expressed as integer minutes.*
+
+### Delete a session by date
 
 ```bash
-rtimelog del 1
+# Delete all records for a date (confirmation required)
+rtimelog del 2025-10-02
+```
+
+Example (interactive):
+
+```bash
+$ rtimelog del 2025-10-02
+Are you sure to delete the records of the date 2025-10-02 (N/y) ? y
+🗑️  Deleted 2 event(s) and 1 work_session(s) for date 2025-10-02
+```
+
+### Delete a specific pair for a specific date
+
+```bash
+# Delete only pair 1 for a specific date (confirmation required)
+rtimelog del --pair 1 2025-10-02
+```
+
+Example (interactive):
+
+```bash
+$ rtimelog del --pair 1 2025-10-02
+Are you sure to delete the pair 1 of the date 2025-10-02 (N/y) ? y
+🗑️  Deleted 1 event(s) for pair 1 on 2025-10-02
 ```
 
 ### Internal log
 
 ```bash
 rtimelog log --print
+```
+
+Example output of `rtimelog log --print`:
+
+```bash
+📜 Internal log:
+  1: 2025-10-03T12:00:00Z | init       | Database initialized at C:\Users\you\AppData\Roaming\rtimelog\rtimelog.sqlite
+  2: 2025-10-03T12:05:00Z | del        | Deleted date=2025-10-02 events=2 work_sessions=1
+  3: 2025-10-03T12:06:00Z | auto_lunch | auto_lunch 30 min for out_event 12 (date=2025-10-02)
 ```
 
 ---

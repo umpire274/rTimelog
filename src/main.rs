@@ -95,8 +95,12 @@ enum Commands {
     },
     /// Delete a work session by ID
     Del {
-        /// ID of the session to delete
-        id: i32,
+        /// Optional pair id to delete (use with date): deletes only the given pair for the date
+        #[arg(long = "pair", help = "Pair id to delete for the given date")]
+        pair: Option<usize>,
+
+        /// Date (YYYY-MM-DD) to delete (all sessions/events for this date) or required with --pair
+        date: String,
     },
     /// List sessions
     List {
@@ -206,7 +210,7 @@ fn main() -> rusqlite::Result<()> {
 
     match &cli.command {
         Commands::Add { .. } => commands::handle_add(&cli.command, &mut conn, &config)?,
-        Commands::Del { .. } => commands::handle_del(&cli.command, &conn)?,
+        Commands::Del { .. } => commands::handle_del(&cli.command, &mut conn)?,
         Commands::List {
             period,
             pos,

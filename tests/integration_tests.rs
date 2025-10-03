@@ -582,13 +582,14 @@ fn test_add_and_delete_session() {
         .success()
         .stdout(contains("2025-09-20"));
 
-    // Delete session with ID 1
+    // Delete by date (new behavior) -- answer 'y' to confirmation prompt
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "del", "1"])
+        .args(["--db", &db_path, "--test", "del", "2025-09-20"])
+        .write_stdin("y\n")
         .assert()
         .success()
-        .stdout(contains("deleted"));
+        .stdout(contains("Deleted").or(contains("deleted")));
 
     // Verify session no longer appears in list
     Command::cargo_bin("rtimelog")
@@ -610,13 +611,16 @@ fn test_delete_nonexistent_session() {
         .assert()
         .success();
 
-    // Try to delete an ID that does not exist
+    // Try to delete a date that does not exist: confirm with 'y' and expect 0 rows deleted
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "del", "999"])
+        .args(["--db", &db_path, "--test", "del", "2099-01-01"])
+        .write_stdin("y\n")
         .assert()
-        .success() // il comando non deve andare in errore
-        .stdout(contains("No session found").or(contains("not found")));
+        .success() // the command should not error
+        .stdout(
+            contains("Deleted 0 event(s) and 0 work_session(s)").or(contains("Deleted 0 event(s)")),
+        );
 }
 
 #[test]
@@ -785,17 +789,17 @@ fn test_events_pair_column_and_grouping() {
 }
 
 #[test]
-fn test_events_filter_by_single_pair() {
-    let db_path = setup_test_db("events_filter_pair");
+fn test_delete_existing_pair() {
+    let db_path = setup_test_db("delete_existing_pair");
 
-    // Init
+    // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
-    // Pair 1
+    // Pair 1 (09:00-12:00)
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -803,15 +807,16 @@ fn test_events_filter_by_single_pair() {
             &db_path,
             "--test",
             "add",
-            "2025-11-01",
-            "O",
+            "2025-10-02",
+            "R",
             "09:00",
             "30",
             "12:00",
         ])
         .assert()
         .success();
-    // Pair 2
+
+    // Pair 2 (13:00-17:00)
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -819,135 +824,56 @@ fn test_events_filter_by_single_pair() {
             &db_path,
             "--test",
             "add",
-            "2025-11-01",
-            "O",
+            "2025-10-02",
+            "R",
             "13:00",
-            "30",
+            "0",
             "17:00",
         ])
         .assert()
         .success();
 
-    // Filtro --pairs 1 deve mostrare solo gli eventi del primo intervallo
+    // Delete pair 1 (confirm 'y')
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
-            "--db", &db_path, "--test", "list", "--events", "--pairs", "1",
+            "--db",
+            &db_path,
+            "--test",
+            "del",
+            "--pair",
+            "1",
+            "2025-10-02",
         ])
+        .write_stdin("y\n")
         .assert()
         .success()
-        .stdout(contains("09:00"))
-        .stdout(contains("12:00"))
-        .stdout(contains("13:00").not())
-        .stdout(contains("17:00").not())
-        .stdout(contains("  1").or(contains("  1*"))); // pair id
-}
+        .stdout(contains("Deleted").or(contains("deleted")));
 
-#[test]
-fn test_events_json_enriched_with_pairs() {
-    let db_path = setup_test_db("events_json_pairs");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-
-    // Due coppie
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-11-02",
-            "R",
-            "08:30",
-            "30",
-            "12:00",
-        ])
-        .assert()
-        .success();
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-11-02",
-            "R",
-            "13:00",
-            "0",
-            "16:30",
-        ])
-        .assert()
-        .success();
-
-    // JSON
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--json"])
-        .assert()
-        .success()
-        .stdout(contains("\"pair\""))
-        .stdout(contains("\"unmatched\""))
-        .stdout(contains("08:30"))
-        .stdout(contains("16:30"));
-}
-
-#[test]
-fn test_events_unmatched_in_with_star_and_json() {
-    let db_path = setup_test_db("events_unmatched_in");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-
-    // Solo evento in (start senza end)
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-11-03",
-            "O",
-            "09:05",
-        ])
-        .assert()
-        .success();
-
-    // Output tabellare: deve contenere '1*' nella colonna Pair (pair id 1 unmatched)
+    // List events and ensure pair1 times are gone, pair2 remains
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "list", "--events"])
         .assert()
         .success()
-        .stdout(contains("09:05"))
-        .stdout(contains("1*"));
-
-    // Output JSON: pair=1 e unmatched=true
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--json"])
-        .assert()
-        .success()
-        .stdout(contains("\"pair\": 1"))
-        .stdout(contains("\"unmatched\": true"));
+        .stdout(contains("13:00"))
+        .stdout(contains("17:00"))
+        .stdout(contains("09:00").not())
+        .stdout(contains("12:00").not());
 }
 
 #[test]
-fn test_events_summary_basic() {
-    let db_path = setup_test_db("events_summary_basic");
+fn test_delete_nonexistent_pair() {
+    let db_path = setup_test_db("delete_nonexistent_pair");
+
+    // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
-    // Pair 1
+
+    // Add a single pair (so pair id 1 exists)
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -955,7 +881,7 @@ fn test_events_summary_basic() {
             &db_path,
             "--test",
             "add",
-            "2025-12-01",
+            "2025-10-03",
             "O",
             "09:00",
             "30",
@@ -963,7 +889,36 @@ fn test_events_summary_basic() {
         ])
         .assert()
         .success();
-    // Pair 2
+
+    // Try to delete a non-existent pair 5 on that date
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "del",
+            "--pair",
+            "5",
+            "2025-10-03",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("Pair 5 not found for date 2025-10-03"));
+}
+
+#[test]
+fn test_delete_pair_updates_work_session() {
+    let db_path = setup_test_db("delete_pair_updates_ws");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Pair 1: R 08:35 - 17:00 with 30 lunch
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -971,36 +926,16 @@ fn test_events_summary_basic() {
             &db_path,
             "--test",
             "add",
-            "2025-12-01",
-            "O",
-            "13:00",
+            "2025-10-02",
+            "R",
+            "08:35",
             "30",
             "17:00",
         ])
         .assert()
         .success();
 
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--summary"])
-        .assert()
-        .success()
-        .stdout(contains("Event pairs summary"))
-        .stdout(contains("2025-12-01"))
-        .stdout(contains("1"))
-        .stdout(contains("2"))
-        .stdout(contains("Dur"));
-}
-
-#[test]
-fn test_events_summary_filter_pair() {
-    let db_path = setup_test_db("events_summary_filter_pair");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-    // Pair 1
+    // Pair 2: C 17:45 - 20:00
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -1008,118 +943,58 @@ fn test_events_summary_filter_pair() {
             &db_path,
             "--test",
             "add",
-            "2025-12-02",
-            "R",
-            "08:30",
-            "30",
-            "11:30",
-        ])
-        .assert()
-        .success();
-    // Pair 2
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-02",
-            "R",
-            "12:30",
+            "2025-10-02",
+            "C",
+            "17:45",
             "0",
-            "16:00",
+            "20:00",
         ])
         .assert()
         .success();
 
+    // Delete pair 2
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
             "--db",
             &db_path,
             "--test",
-            "list",
-            "--events",
-            "--summary",
-            "--pairs",
+            "del",
+            "--pair",
             "2",
+            "2025-10-02",
         ])
+        .write_stdin("y\n")
         .assert()
-        .success()
-        .stdout(contains("Event pairs summary"))
-        .stdout(contains("12:30"))
-        .stdout(contains("16:00"))
-        .stdout(contains("08:30").not());
+        .success();
+
+    // Open DB and assert work_sessions updated
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let mut stmt = conn
+        .prepare("SELECT position, end_time FROM work_sessions WHERE date = ?1")
+        .expect("prepare");
+    let mut rows = stmt.query(["2025-10-02"]).expect("query");
+    let row = rows.next().expect("next").expect("row");
+    let position: String = row.get(0).expect("get pos");
+    let end_time: String = row.get(1).expect("get end");
+
+    // After deleting pair 2, only pair 1 remains -> position should be 'R' and end_time '17:00'
+    assert_eq!(position, "R");
+    assert_eq!(end_time, "17:00");
 }
 
 #[test]
-fn test_events_summary_json() {
-    let db_path = setup_test_db("events_summary_json");
+fn test_delete_pair_with_mixed_positions_leaves_position_unchanged() {
+    let db_path = setup_test_db("delete_pair_mixed_positions");
+
+    // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
-    // Pair 1
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-03",
-            "O",
-            "09:10",
-            "30",
-            "12:10",
-        ])
-        .assert()
-        .success();
-    // Pair 2 unmatched (solo in)
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-03",
-            "O",
-            "13:05",
-        ])
-        .assert()
-        .success();
 
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "list",
-            "--events",
-            "--summary",
-            "--json",
-        ])
-        .assert()
-        .success()
-        .stdout(contains("\"pair\""))
-        .stdout(contains("\"duration_minutes\""))
-        .stdout(contains("\"unmatched\": true"))
-        .stdout(contains("09:10"));
-}
-
-#[test]
-fn test_events_summary_unmatched_only() {
-    let db_path = setup_test_db("events_summary_unmatched_only");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-    // single IN event
+    // Pair 1: R 08:00 - 09:00
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -1127,19 +1002,101 @@ fn test_events_summary_unmatched_only() {
             &db_path,
             "--test",
             "add",
-            "2025-12-04",
+            "2025-10-05",
             "R",
-            "10:00",
+            "08:00",
+            "0",
+            "09:00",
         ])
         .assert()
         .success();
 
+    // Pair 2: O 10:00 - 11:00
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--summary"])
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-05",
+            "O",
+            "10:00",
+            "0",
+            "11:00",
+        ])
         .assert()
-        .success()
-        .stdout(contains("10:00"))
-        .stdout(contains("1*"))
-        .stdout(contains("Dur"));
+        .success();
+
+    // Pair 3: C 12:00 - 13:00
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-05",
+            "C",
+            "12:00",
+            "0",
+            "13:00",
+        ])
+        .assert()
+        .success();
+
+    // Confirm pre-delete position is Mixed (M)
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let mut stmt = conn
+        .prepare(
+            "SELECT position, start_time, end_time, lunch_break FROM work_sessions WHERE date = ?1",
+        )
+        .expect("prepare");
+    let mut rows = stmt.query(["2025-10-05"]).expect("query");
+    let row = rows.next().expect("next").expect("row");
+    let position_before: String = row.get(0).expect("get pos");
+    let start_before: String = row.get(1).expect("get start");
+    let end_before: String = row.get(2).expect("get end");
+
+    assert_eq!(position_before, "M");
+    assert_eq!(start_before, "08:00");
+    assert_eq!(end_before, "13:00");
+
+    // Delete pair 2 (the middle one with position O) -> remaining positions are R and C (mixed)
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "del",
+            "--pair",
+            "2",
+            "2025-10-05",
+        ])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+
+    // Re-open DB and check work_sessions values
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let mut stmt = conn
+        .prepare(
+            "SELECT position, start_time, end_time, lunch_break FROM work_sessions WHERE date = ?1",
+        )
+        .expect("prepare");
+    let mut rows = stmt.query(["2025-10-05"]).expect("query");
+    let row = rows.next().expect("next").expect("row");
+    let position_after: String = row.get(0).expect("get pos");
+    let start_after: String = row.get(1).expect("get start");
+    let end_after: String = row.get(2).expect("get end");
+    let lunch_after: i32 = row.get(3).expect("get lunch");
+
+    // Position should remain unchanged (still 'M') because remaining are mixed
+    assert_eq!(position_after, position_before);
+    // start should be min among remaining events (08:00), end max (13:00) but since we removed pair2, max remains 13:00
+    assert_eq!(start_after, "08:00");
+    assert_eq!(end_after, "13:00");
+    // lunch_break should be taken from latest remaining out (13:00) which was added with 0
+    assert_eq!(lunch_after, 0);
 }

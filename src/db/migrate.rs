@@ -81,6 +81,11 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Migrate existing work_sessions rows into events (idempotent, source='migration')",
         up: migrate_to_037_migrate_work_sessions_to_events,
     },
+    Migration {
+        version: "20251020_0008_add_M",
+        description: "Extend position CHECK to include 'M' (Mixed) and migrate existing tables if necessary",
+        up: migrate_to_038_add_m,
+    },
 ];
 
 /// Esegui solo le migrazioni non ancora applicate
@@ -91,7 +96,7 @@ pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
         CREATE TABLE IF NOT EXISTS work_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
-            position TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C')),
+            position TEXT NOT NULL DEFAULT 'O' CHECK (position IN ('O','R','H','C','M')),
             start_time TEXT NOT NULL DEFAULT '',
             lunch_break INTEGER NOT NULL DEFAULT 0,
             end_time TEXT NOT NULL DEFAULT ''
@@ -351,7 +356,7 @@ fn migrate_to_036_create_events(conn: &Connection) -> rusqlite::Result<()> {
             date TEXT NOT NULL,
             time TEXT NOT NULL,
             kind TEXT NOT NULL CHECK(kind IN ('in','out')),
-            position TEXT NOT NULL DEFAULT 'O' CHECK(position IN ('O','R','H','C')),
+            position TEXT NOT NULL DEFAULT 'O' CHECK(position IN ('O','R','H','C','M')),
             lunch_break INTEGER NOT NULL DEFAULT 0,
             source TEXT NOT NULL DEFAULT 'cli',
             meta TEXT DEFAULT '',
@@ -430,5 +435,84 @@ fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite
     db::ttlog(conn, "migrate_to_037_migrate_work_sessions_to_events", &msg)?;
     println!("✅ {}", msg);
 
+    Ok(())
+}
+
+fn migrate_to_038_add_m(conn: &Connection) -> rusqlite::Result<()> {
+    // Detect work_sessions table with old CHECK and rewrite to include 'M'
+    let mut stmt =
+        conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
+    let table_sql: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
+
+    if let Some(sql) = table_sql {
+        // if the existing table still has C but not M, migrate
+        if sql.contains("CHECK(position IN ('O','R','H','C'))")
+            || sql.contains("CHECK(position IN ('O','R','H','C')")
+        {
+            println!(
+                "⚠️  Old schema detected, migrating work_sessions to support 'M' (Mixed) and updating events table if needed..."
+            );
+
+            conn.execute_batch(
+                "
+                ALTER TABLE work_sessions RENAME TO work_sessions_old;
+
+                CREATE TABLE work_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    position TEXT NOT NULL CHECK(position IN ('O','R','H','C','M')),
+                    start_time TEXT DEFAULT '',
+                    lunch_break INTEGER DEFAULT 0,
+                    end_time TEXT DEFAULT ''
+                );
+
+                INSERT INTO work_sessions (id, date, position, start_time, lunch_break, end_time)
+                SELECT id, date, position, start_time, lunch_break, end_time
+                FROM work_sessions_old;
+
+                DROP TABLE work_sessions_old;
+                ",
+            )?;
+
+            // Also update events table if present and missing 'M'
+            let mut stmt_ev =
+                conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")?;
+            let ev_sql: Option<String> = stmt_ev.query_row([], |row| row.get(0)).optional()?;
+            if let Some(esql) = ev_sql
+                && (esql.contains("CHECK(position IN ('O','R','H','C'))")
+                    || esql.contains("CHECK(position IN ('O','R','H','C')"))
+            {
+                conn.execute_batch(
+                    "
+                        ALTER TABLE events RENAME TO events_old;
+
+                        CREATE TABLE events (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            date TEXT NOT NULL,
+                            time TEXT NOT NULL,
+                            kind TEXT NOT NULL CHECK(kind IN ('in','out')),
+                            position TEXT NOT NULL DEFAULT 'O' CHECK(position IN ('O','R','H','C','M')),
+                            lunch_break INTEGER NOT NULL DEFAULT 0,
+                            source TEXT NOT NULL DEFAULT 'cli',
+                            meta TEXT DEFAULT '',
+                            created_at TEXT NOT NULL
+                        );
+
+                        INSERT INTO events (id, date, time, kind, position, lunch_break, source, meta, created_at)
+                        SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events_old;
+
+                        DROP TABLE events_old;
+                        "
+                )?;
+            }
+
+            db::ttlog(
+                conn,
+                "migrate_to_038_add_m",
+                "Migration to add 'M' to position CHECK completed.",
+            )?;
+            println!("✅ Migration completed: added 'M' to position checks.");
+        }
+    }
     Ok(())
 }
