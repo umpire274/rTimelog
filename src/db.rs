@@ -316,6 +316,84 @@ pub fn set_event_lunch(conn: &Connection, event_id: i32, lunch: i32) -> Result<(
     Ok(())
 }
 
+/// Update time for a specific event
+pub fn set_event_time(conn: &Connection, event_id: i32, new_time: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE events SET time = ?1 WHERE id = ?2",
+        params![new_time, event_id],
+    )?;
+    Ok(())
+}
+
+/// Update position for a specific event
+pub fn set_event_position(conn: &Connection, event_id: i32, new_pos: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE events SET position = ?1 WHERE id = ?2",
+        params![new_pos, event_id],
+    )?;
+    Ok(())
+}
+
+// Helper used by force_set_* to update or insert a legacy work_sessions row when forcing a single field.
+fn force_set_field<T: ToSql>(
+    conn: &Connection,
+    date: &str,
+    field: &str,
+    value: T,
+    default_pos: &str,
+) -> Result<()> {
+    let sql = format!("UPDATE work_sessions SET {} = ?1 WHERE date = ?2", field);
+    let changed = conn.execute(&sql, params![&value, date])?;
+    if changed == 0 {
+        // Insert full row with only this field populated (others default)
+        let insert_sql = match field {
+            "position" => "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+            "start_time" => {
+                "INSERT INTO work_sessions (date, position, start_time) VALUES (?1, ?2, ?3)"
+            }
+            "end_time" => {
+                "INSERT INTO work_sessions (date, position, end_time) VALUES (?1, ?2, ?3)"
+            }
+            "lunch_break" => {
+                "INSERT INTO work_sessions (date, position, lunch_break) VALUES (?1, ?2, ?3)"
+            }
+            _ => "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+        };
+        match field {
+            "position" => {
+                conn.execute(insert_sql, params![date, &value])?;
+            }
+            "start_time" | "end_time" | "lunch_break" => {
+                conn.execute(insert_sql, params![date, default_pos, &value])?;
+            }
+            _ => {
+                conn.execute(
+                    "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+                    params![date, default_pos],
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn force_set_position(conn: &Connection, date: &str, pos: &str) -> Result<()> {
+    force_set_field(conn, date, "position", pos, pos)
+}
+
+pub fn force_set_start(conn: &Connection, date: &str, start: &str) -> Result<()> {
+    force_set_field(conn, date, "start_time", start, "O")
+}
+
+pub fn force_set_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
+    force_set_field(conn, date, "end_time", end, "O")
+}
+
+pub fn force_set_lunch(conn: &Connection, date: &str, lunch: i32) -> Result<()> {
+    force_set_field(conn, date, "lunch_break", lunch, "O")
+}
+
+// Struct per passare argomenti alla funzione add_event
 pub struct AddEventArgs<'a> {
     pub date: &'a str,
     pub time: &'a str,
