@@ -982,3 +982,121 @@ fn test_delete_pair_updates_work_session() {
     assert_eq!(position, "R");
     assert_eq!(end_time, "17:00");
 }
+
+#[test]
+fn test_delete_pair_with_mixed_positions_leaves_position_unchanged() {
+    let db_path = setup_test_db("delete_pair_mixed_positions");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Pair 1: R 08:00 - 09:00
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-05",
+            "R",
+            "08:00",
+            "0",
+            "09:00",
+        ])
+        .assert()
+        .success();
+
+    // Pair 2: O 10:00 - 11:00
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-05",
+            "O",
+            "10:00",
+            "0",
+            "11:00",
+        ])
+        .assert()
+        .success();
+
+    // Pair 3: C 12:00 - 13:00
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-05",
+            "C",
+            "12:00",
+            "0",
+            "13:00",
+        ])
+        .assert()
+        .success();
+
+    // Confirm pre-delete position is Mixed (M)
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let mut stmt = conn
+        .prepare(
+            "SELECT position, start_time, end_time, lunch_break FROM work_sessions WHERE date = ?1",
+        )
+        .expect("prepare");
+    let mut rows = stmt.query(["2025-10-05"]).expect("query");
+    let row = rows.next().expect("next").expect("row");
+    let position_before: String = row.get(0).expect("get pos");
+    let start_before: String = row.get(1).expect("get start");
+    let end_before: String = row.get(2).expect("get end");
+
+    assert_eq!(position_before, "M");
+    assert_eq!(start_before, "08:00");
+    assert_eq!(end_before, "13:00");
+
+    // Delete pair 2 (the middle one with position O) -> remaining positions are R and C (mixed)
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "del",
+            "--pair",
+            "2",
+            "2025-10-05",
+        ])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+
+    // Re-open DB and check work_sessions values
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let mut stmt = conn
+        .prepare(
+            "SELECT position, start_time, end_time, lunch_break FROM work_sessions WHERE date = ?1",
+        )
+        .expect("prepare");
+    let mut rows = stmt.query(["2025-10-05"]).expect("query");
+    let row = rows.next().expect("next").expect("row");
+    let position_after: String = row.get(0).expect("get pos");
+    let start_after: String = row.get(1).expect("get start");
+    let end_after: String = row.get(2).expect("get end");
+    let lunch_after: i32 = row.get(3).expect("get lunch");
+
+    // Position should remain unchanged (still 'M') because remaining are mixed
+    assert_eq!(position_after, position_before);
+    // start should be min among remaining events (08:00), end max (13:00) but since we removed pair2, max remains 13:00
+    assert_eq!(start_after, "08:00");
+    assert_eq!(end_after, "13:00");
+    // lunch_break should be taken from latest remaining out (13:00) which was added with 0
+    assert_eq!(lunch_after, 0);
+}

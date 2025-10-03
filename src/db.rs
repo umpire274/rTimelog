@@ -602,3 +602,124 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
 
     Ok(sessions)
 }
+
+/// Delete events by ids and recompute/update work_sessions for the given date atomically.
+/// Returns the number of deleted event rows.
+pub fn delete_events_by_ids_and_recompute_sessions(
+    conn: &mut Connection,
+    ids: &[i32],
+    date: &str,
+) -> Result<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn.transaction()?;
+
+    // Execute delete inside a narrow scope so statement is dropped early
+    let deleted = {
+        // Build delete SQL
+        let mut sql = String::from("DELETE FROM events WHERE id IN (");
+        sql.push_str(&vec!["?"; ids.len()].join(","));
+        sql.push(')');
+        let params_vec: Vec<&dyn ToSql> = ids.iter().map(|i| i as &dyn ToSql).collect();
+        let mut del_stmt = tx.prepare(&sql)?;
+        let changed = del_stmt.execute(rusqlite::params_from_iter(params_vec))?;
+        // del_stmt dropped here at end of scope
+        changed
+    };
+
+    // Query remaining events for the date inside the same transaction; keep statement scoped
+    let mut remaining: Vec<Event> = Vec::new();
+    {
+        let mut sel = tx.prepare(
+            "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 ORDER BY time ASC",
+        )?;
+        let remaining_rows = sel.query_map([date], row_to_event)?;
+        for r in remaining_rows {
+            remaining.push(r?);
+        }
+        // sel and remaining_rows dropped here
+    }
+
+    if remaining.is_empty() {
+        // delete work_sessions row(s) for date
+        tx.execute("DELETE FROM work_sessions WHERE date = ?1", params![date])?;
+    } else {
+        // end_time = max time among remaining events
+        if let Some(max_time) = remaining.iter().map(|e| e.time.clone()).max() {
+            // Update or insert end_time via existing helper using the transaction
+            // We'll use direct SQL to update within the tx (force_set_end uses Connection methods)
+            let changed = tx.execute(
+                "UPDATE work_sessions SET end_time = ?1 WHERE date = ?2",
+                params![&max_time, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position, end_time) VALUES (?1, ?2, ?3)",
+                    params![date, "O", &max_time],
+                )?;
+            }
+        }
+
+        // start_time: choose earliest 'in' if any, otherwise earliest event time
+        let min_time_opt = remaining
+            .iter()
+            .filter(|e| e.kind == "in")
+            .map(|e| e.time.clone())
+            .min()
+            .or_else(|| remaining.iter().map(|e| e.time.clone()).min());
+        if let Some(min_time) = min_time_opt {
+            let changed = tx.execute(
+                "UPDATE work_sessions SET start_time = ?1 WHERE date = ?2",
+                params![&min_time, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position, start_time) VALUES (?1, ?2, ?3)",
+                    params![date, "O", &min_time],
+                )?;
+            }
+        }
+
+        // lunch_break: get the latest 'out' event (max time among kind='out') and use its lunch_break
+        let last_out = remaining
+            .iter()
+            .filter(|e| e.kind == "out")
+            .max_by(|a, b| a.time.cmp(&b.time));
+        if let Some(out_ev) = last_out {
+            let lunch_val = out_ev.lunch_break;
+            let changed = tx.execute(
+                "UPDATE work_sessions SET lunch_break = ?1 WHERE date = ?2",
+                params![lunch_val, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position, lunch_break) VALUES (?1, ?2, ?3)",
+                    params![date, "O", lunch_val],
+                )?;
+            }
+        }
+
+        // position: if all remaining events share same position, set it; otherwise leave as-is
+        let mut positions: Vec<String> = remaining.iter().map(|e| e.position.clone()).collect();
+        positions.sort();
+        positions.dedup();
+        if positions.len() == 1 {
+            let pos = &positions[0];
+            let changed = tx.execute(
+                "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
+                params![pos, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+                    params![date, pos],
+                )?;
+            }
+        }
+    }
+
+    tx.commit()?;
+    Ok(deleted)
+}

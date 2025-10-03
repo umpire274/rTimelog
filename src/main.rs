@@ -210,7 +210,7 @@ fn main() -> rusqlite::Result<()> {
 
     match &cli.command {
         Commands::Add { .. } => commands::handle_add(&cli.command, &mut conn, &config)?,
-        Commands::Del { .. } => commands::handle_del(&cli.command, &conn)?,
+        Commands::Del { .. } => commands::handle_del(&cli.command, &mut conn)?,
         Commands::List {
             period,
             pos,

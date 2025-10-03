@@ -119,7 +119,7 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
+pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()> {
     if let Commands::Del { pair, date } = cmd {
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
@@ -163,7 +163,7 @@ pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
                 return Ok(());
             }
 
-            match db::delete_events_by_ids(conn, &ids_to_delete) {
+            match db::delete_events_by_ids_and_recompute_sessions(conn, &ids_to_delete, date) {
                 Ok(rows) => {
                     println!(
                         "🗑️  Deleted {} event(s) for pair {} on {}",
@@ -174,51 +174,6 @@ pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
                         "del",
                         &format!("Deleted {} events for date={} pair={}", rows, date, pair_id),
                     );
-                    // After deletion, if no events remain for date, remove work_sessions row; otherwise recompute aggregated position
-                    let remaining = db::list_events_by_date(conn, date)?;
-                    if remaining.is_empty() {
-                        let _ = db::delete_sessions_by_date(conn, date);
-                        println!(
-                            "🗑️  No remaining events: deleted work_sessions rows for {}",
-                            date
-                        );
-                        let _ = db::ttlog(
-                            conn,
-                            "del",
-                            &format!("Deleted work_sessions for date={}", date),
-                        );
-                    } else {
-                        // 1) Set end_time in work_sessions to the highest time among remaining events
-                        if let Some(max_time) = remaining.iter().map(|e| e.time.clone()).max() {
-                            let _ = db::force_set_end(conn, date, &max_time);
-                            println!(
-                                "⏱️  Updated work_sessions end_time to {} for {}",
-                                max_time, date
-                            );
-                            let _ = db::ttlog(
-                                conn,
-                                "del",
-                                &format!("Updated end_time={} for date={}", max_time, date),
-                            );
-                        }
-
-                        // 2) If all remaining events share the same position, set work_sessions.position to it.
-                        //    If positions are mixed, do not change the stored position.
-                        let mut positions: Vec<String> =
-                            remaining.iter().map(|e| e.position.clone()).collect();
-                        positions.sort();
-                        positions.dedup();
-                        if positions.len() == 1 {
-                            let pos = &positions[0];
-                            let _ = db::force_set_position(conn, date, pos);
-                            println!("📌 Updated work_sessions position to {} for {}", pos, date);
-                            let _ = db::ttlog(
-                                conn,
-                                "del",
-                                &format!("Updated position={} for date={}", pos, date),
-                            );
-                        }
-                    }
                 }
                 Err(e) => eprintln!("❌ Error deleting pair events: {}", e),
             }
