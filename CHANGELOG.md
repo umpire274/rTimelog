@@ -8,6 +8,7 @@
   - `del <date>` removes all events and legacy work_session rows for the given date (with interactive confirmation).
   - `del --pair <pair> <date>` removes only the events belonging to the specified pair for that date (with interactive confirmation); if no events remain for the date the legacy work_sessions row(s) are removed as well.
 - Database helper functions to delete events by date/ids and sessions by date.
+- `del` now records concise audit entries into the internal `log` table (visible with `rtimelog log --print`).
 
 ### Changed
 
