@@ -3,3 +3,4 @@
 *.db
 *.png
 *.sqlite
+.DS_Store
