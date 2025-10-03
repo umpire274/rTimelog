@@ -7,46 +7,6 @@ use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
 use std::process::Command;
 
-// Private helper to create a missing event (in/out) and return the created event if found.
-fn create_missing_event(
-    conn: &mut Connection,
-    date: &str,
-    time_val: &str,
-    kind_val: &str,
-    pos_opt: &Option<String>,
-    prefer_other: Option<&db::Event>,
-    config: &Config,
-) -> rusqlite::Result<Option<db::Event>> {
-    // Determine preferred position: explicit CLI pos has priority, then other event's position, then config default
-    let p_norm = pos_opt.clone().unwrap_or_else(|| {
-        prefer_other
-            .map(|e| e.position.clone())
-            .unwrap_or_else(|| config.default_position.clone())
-    });
-
-    // Build AddEventArgs with references valid for the duration of this function call
-    let args = db::AddEventArgs {
-        date,
-        time: time_val,
-        kind: kind_val,
-        position: Some(p_norm.as_str()),
-        source: "cli",
-        meta: None,
-    };
-
-    if let Err(e) = db::add_event(conn, &args, config) {
-        eprintln!(
-            "\u{26a0}\u{FE0F} Failed to create missing {} event: {}",
-            kind_val, e
-        );
-    }
-
-    let found = db::list_events_by_date(conn, date)?
-        .into_iter()
-        .find(|ev| ev.kind == kind_val && ev.time == time_val);
-    Ok(found)
-}
-
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
     if let Commands::Conf {
         print_config,
@@ -277,7 +237,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Some(sv) = start.as_ref()
                 && in_event.is_none()
             {
-                in_event = create_missing_event(
+                in_event = r_timelog::events::create_missing_event(
                     conn,
                     date,
                     sv.as_str(),
@@ -292,7 +252,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Some(ev_t) = end.as_ref()
                 && out_event.is_none()
             {
-                out_event = create_missing_event(
+                out_event = r_timelog::events::create_missing_event(
                     conn,
                     date,
                     ev_t.as_str(),

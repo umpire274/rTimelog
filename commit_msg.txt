@@ -1,0 +1,5 @@
+Refactor(events): move create_missing_event to new module and add test 
+ 
+- Moved create_missing_event into src/events.rs and exported it for testability. 
+- Updated src/commands.rs to call _timelog::events::create_missing_event. 
+- Added integration test 	ests/missing_event_tests.rs. 
