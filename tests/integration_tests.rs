@@ -906,3 +906,79 @@ fn test_delete_nonexistent_pair() {
         .success()
         .stdout(contains("Pair 5 not found for date 2025-10-03"));
 }
+
+#[test]
+fn test_delete_pair_updates_work_session() {
+    let db_path = setup_test_db("delete_pair_updates_ws");
+
+    // Init DB
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args(["--db", &db_path, "--test", "init"])
+        .assert()
+        .success();
+
+    // Pair 1: R 08:35 - 17:00 with 30 lunch
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-02",
+            "R",
+            "08:35",
+            "30",
+            "17:00",
+        ])
+        .assert()
+        .success();
+
+    // Pair 2: C 17:45 - 20:00
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "add",
+            "2025-10-02",
+            "C",
+            "17:45",
+            "0",
+            "20:00",
+        ])
+        .assert()
+        .success();
+
+    // Delete pair 2
+    Command::cargo_bin("rtimelog")
+        .unwrap()
+        .args([
+            "--db",
+            &db_path,
+            "--test",
+            "del",
+            "--pair",
+            "2",
+            "2025-10-02",
+        ])
+        .write_stdin("y\n")
+        .assert()
+        .success();
+
+    // Open DB and assert work_sessions updated
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let mut stmt = conn
+        .prepare("SELECT position, end_time FROM work_sessions WHERE date = ?1")
+        .expect("prepare");
+    let mut rows = stmt.query(["2025-10-02"]).expect("query");
+    let row = rows.next().expect("next").expect("row");
+    let position: String = row.get(0).expect("get pos");
+    let end_time: String = row.get(1).expect("get end");
+
+    // After deleting pair 2, only pair 1 remains -> position should be 'R' and end_time '17:00'
+    assert_eq!(position, "R");
+    assert_eq!(end_time, "17:00");
+}
