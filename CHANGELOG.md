@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.4.1] - 2025-10-03
+
+### Added
+
+- Unit test(s) targeting the creation of missing events (exposed for unit testing).
+
+### Changed
+
+- Refactored event helper logic:
+  - Extracted `create_missing_event` helper into a reusable function and moved it to `src/events.rs` for better testability and separation of concerns.
+  - Removed duplicated code in `commands.rs` and consolidated the helper usage.
+- Presentation improvement: in `list --events --summary` the Duration field is now displayed in a human-friendly "Xh Ym" format instead of raw minutes (display-only change).
+- Updated integration tests to cover the new event creation logic.
+
+### Fixed
+
+- Resolved compilation issues caused by duplicate definitions in `commands.rs`.
+
+---
+
 # [0.4.0] - 2025-10-02
 
 ### Added

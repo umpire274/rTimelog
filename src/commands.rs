@@ -149,11 +149,16 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         start,
         lunch,
         end,
+        edit_pair,
+        edit,
     } = cmd
     {
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
-            eprintln!("❌ Invalid date format: {} (expected YYYY-MM-DD)", date);
+            eprintln!(
+                "\u{274c} Invalid date format: {} (expected YYYY-MM-DD)",
+                date
+            );
             return Ok(());
         }
 
@@ -163,48 +168,205 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         let lunch = (*lunch).or(*lunch_pos);
         let end = end.clone().or(end_pos.clone());
 
-        // Collect changes to log a single message at the end
-        let mut changes: Vec<String> = Vec::new();
+        // --------------------------------------------------
+        // EDIT MODE (explicit only)
+        // --------------------------------------------------
+        if *edit {
+            let pair_id = match edit_pair {
+                Some(p) => *p,
+                None => {
+                    eprintln!("\u{26a0}\u{FE0F} Missing --pair <id> with --edit");
+                    return Ok(());
+                }
+            };
 
-        // Handle position
-        if let Some(p) = pos.as_ref() {
-            let p = p.trim().to_uppercase();
-            if p != "O" && p != "R" && p != "H" && p != "C" {
+            let events = db::list_events_by_date(conn, date)?;
+            if events.is_empty() {
+                eprintln!("\u{26a0}\u{FE0F} No events for date {} to edit", date);
+                return Ok(());
+            }
+
+            let enriched = compute_event_pairs(&events);
+            let mut in_event: Option<db::Event> = None;
+            let mut out_event: Option<db::Event> = None;
+            for ew in enriched.iter().filter(|e| e.pair == pair_id) {
+                if ew.event.kind == "in" {
+                    in_event = Some(ew.event.clone());
+                } else if ew.event.kind == "out" {
+                    out_event = Some(ew.event.clone());
+                }
+            }
+
+            if in_event.is_none() && out_event.is_none() {
                 eprintln!(
-                    "❌ Invalid position: {} (use O=office or R=remote or H=Holiday or C=On-Site)",
-                    p
+                    "\u{26a0}\u{FE0F} Pair {} not found for date {}",
+                    pair_id, date
                 );
                 return Ok(());
             }
-            db::upsert_position(conn, date, &p)?;
-            let (pos_string, _) = describe_position(&p);
-            println!("✅ Position {} set for {}", pos_string, date);
-            changes.push(format!("position={}", p));
+
+            // Validazioni base tempi (collapse ifs)
+            if let Some(s) = start.as_ref()
+                && NaiveTime::parse_from_str(s, "%H:%M").is_err()
+            {
+                eprintln!("\u{274c} Invalid start time: {}", s);
+                return Ok(());
+            }
+            if let Some(e_t) = end.as_ref()
+                && NaiveTime::parse_from_str(e_t, "%H:%M").is_err()
+            {
+                eprintln!("\u{274c} Invalid end time: {}", e_t);
+                return Ok(());
+            }
+            if let (Some(s), Some(e_t)) = (start.as_ref(), end.as_ref())
+                && let (Ok(ts), Ok(te)) = (
+                    NaiveTime::parse_from_str(s, "%H:%M"),
+                    NaiveTime::parse_from_str(e_t, "%H:%M"),
+                )
+                && te <= ts
+            {
+                eprintln!(
+                    "\u{274c} End time must be after start time ({} >= {})",
+                    e_t, s
+                );
+                return Ok(());
+            }
+
+            // Creazione eventi mancanti se l'utente prova a completare la coppia
+            // If user provided a start but the 'in' event is missing, create it using the shared helper
+            if let Some(sv) = start.as_ref()
+                && in_event.is_none()
+            {
+                in_event = r_timelog::events::create_missing_event(
+                    conn,
+                    date,
+                    sv.as_str(),
+                    "in",
+                    &pos,
+                    out_event.as_ref(),
+                    config,
+                )?;
+            }
+
+            // If user provided an end but the 'out' event is missing, create it using the shared helper
+            if let Some(ev_t) = end.as_ref()
+                && out_event.is_none()
+            {
+                out_event = r_timelog::events::create_missing_event(
+                    conn,
+                    date,
+                    ev_t.as_str(),
+                    "out",
+                    &pos,
+                    in_event.as_ref(),
+                    config,
+                )?;
+            }
+
+            // Applica modifiche sugli eventi esistenti
+            let mut changes: Vec<String> = Vec::new();
+
+            if let Some(p) = pos.as_ref() {
+                let p_norm = p.trim().to_uppercase();
+                if p_norm != "O" && p_norm != "R" && p_norm != "H" && p_norm != "C" {
+                    eprintln!("\u{274c} Invalid position: {}", p_norm);
+                    return Ok(());
+                }
+                if let Some(ie) = in_event.as_ref() {
+                    let _ = db::set_event_position(conn, ie.id, &p_norm);
+                }
+                if let Some(oe) = out_event.as_ref() {
+                    let _ = db::set_event_position(conn, oe.id, &p_norm);
+                }
+                let _ = db::force_set_position(conn, date, &p_norm);
+                println!(
+                    "\u{2705} Position {} set for {} (pair {})",
+                    p_norm, date, pair_id
+                );
+                changes.push(format!("pos={}", p_norm));
+            }
+
+            if let (Some(sv), Some(ie)) = (start.as_ref(), in_event.as_ref()) {
+                let _ = db::set_event_time(conn, ie.id, sv.as_str());
+                let _ = db::force_set_start(conn, date, sv.as_str());
+                println!("\u{2705} Start {} updated (pair {})", sv, pair_id);
+                changes.push(format!("start={}", sv));
+            }
+
+            if let (Some(ev_t), Some(oe)) = (end.as_ref(), out_event.as_ref()) {
+                let _ = db::set_event_time(conn, oe.id, ev_t.as_str());
+                let _ = db::force_set_end(conn, date, ev_t.as_str());
+                println!("\u{2705} End {} updated (pair {})", ev_t, pair_id);
+                changes.push(format!("end={}", ev_t));
+            }
+
+            if let Some(lv) = lunch {
+                if !(0..=90).contains(&lv) {
+                    eprintln!("\u{274c} Invalid lunch break: {}", lv);
+                    return Ok(());
+                }
+                if let Some(oe) = out_event.as_ref() {
+                    let _ = db::set_event_lunch(conn, oe.id, lv);
+                    let _ = db::force_set_lunch(conn, date, lv);
+                    println!("\u{2705} Lunch {} min updated (pair {})", lv, pair_id);
+                    changes.push(format!("lunch={}", lv));
+                }
+            }
+
+            if changes.is_empty() {
+                eprintln!(
+                    "\u{26a0}\u{FE0F} No fields provided to edit (use --pos/--in/--out/--lunch)"
+                );
+            } else if let Err(e) = db::ttlog(
+                conn,
+                "edit",
+                &format!("date={} pair={} | {}", date, pair_id, changes.join(", ")),
+            ) {
+                eprintln!("\u{26a0}\u{FE0F} Failed to log edit: {}", e);
+            }
+
+            return Ok(());
+        }
+
+        // --------------------------------------------------
+        // NORMAL MODE (always create / upsert fields, never implicit edit of existing pair)
+        // --------------------------------------------------
+
+        // Handle position
+        if let Some(p) = pos.as_ref() {
+            let ptrim = p.trim().to_uppercase();
+            if ptrim != "O" && ptrim != "R" && ptrim != "H" && ptrim != "C" {
+                eprintln!(
+                    "\u{274c} Invalid position: {} (use O=office or R=remote or H=Holiday or C=On-Site)",
+                    ptrim
+                );
+                return Ok(());
+            }
+            let _ = db::upsert_position(conn, date, &ptrim);
+            let (pos_string, _) = describe_position(&ptrim);
+            println!("\u{2705} Position {} set for {}", pos_string, date);
         }
 
         // Handle start time
-        if let Some(s) = start.as_ref() {
-            if NaiveTime::parse_from_str(s, "%H:%M").is_err() {
-                eprintln!("❌ Invalid start time: {} (expected HH:MM)", s);
+        if let Some(sv) = start.as_ref() {
+            if NaiveTime::parse_from_str(sv, "%H:%M").is_err() {
+                eprintln!("\u{274c} Invalid start time: {} (expected HH:MM)", sv);
                 return Ok(());
             }
-            db::upsert_start(conn, date, s)?;
-            println!("✅ Start time {} registered for {}", s, date);
-            changes.push(format!("start={}", s));
-
-            // Dual-write: also record an event (in). Pass explicit position only if provided, normalized to uppercase.
+            db::upsert_start(conn, date, sv.as_str())?;
+            println!("\u{2705} Start time {} registered for {}", sv, date);
+            // event in
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
-            let event_pos_ref: Option<&str> = event_pos_owned.as_deref();
             let args = db::AddEventArgs {
                 date,
-                time: s,
+                time: sv.as_str(),
                 kind: "in",
-                position: event_pos_ref,
+                position: event_pos_owned.as_deref(),
                 source: "cli",
                 meta: None,
             };
             if let Err(e) = db::add_event(conn, &args, config) {
-                eprintln!("⚠️ Failed to insert event (in): {}", e);
+                eprintln!("\u{26a0}\u{FE0F} Failed to insert event (in): {}", e);
             }
         }
 
@@ -212,94 +374,72 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         if let Some(l) = lunch {
             if !(0..=90).contains(&l) {
                 eprintln!(
-                    "❌ Invalid lunch break: {} (must be between 0 and 90 minutes)",
+                    "\u{274c} Invalid lunch break: {} (must be between 0 and 90 minutes)",
                     l
                 );
                 return Ok(());
             }
             db::upsert_lunch(conn, date, l)?;
-            println!("✅ Lunch {} min registered for {}", l, date);
-            changes.push(format!("lunch={}", l));
-
+            println!("\u{2705} Lunch {} min registered for {}", l, date);
             // Also, if there is an out event present, set its lunch_break for compatibility
             match db::last_out_before(conn, date, "23:59") {
                 Ok(Some(out_ev)) => {
                     if out_ev.lunch_break == 0
                         && let Err(e) = db::set_event_lunch(conn, out_ev.id, l)
                     {
-                        eprintln!("⚠️ Failed to set lunch on event {}: {}", out_ev.id, e);
+                        eprintln!(
+                            "\u{26a0}\u{FE0F} Failed to set lunch on event {}: {}",
+                            out_ev.id, e
+                        );
                     }
                 }
-                Ok(None) => {
-                    // no out events; nothing to update
-                }
-                Err(e) => eprintln!("⚠️ Error while searching for last out event: {}", e),
+                Ok(None) => {}
+                Err(e) => eprintln!(
+                    "\u{26a0}\u{FE0F} Error while searching for last out event: {}",
+                    e
+                ),
             }
         }
 
         // Handle end time
-        if let Some(e) = end.as_ref() {
-            if NaiveTime::parse_from_str(e, "%H:%M").is_err() {
-                eprintln!("❌ Invalid end time: {} (expected HH:MM)", e);
+        if let Some(ev_t) = end.as_ref() {
+            if NaiveTime::parse_from_str(ev_t, "%H:%M").is_err() {
+                eprintln!("\u{274c} Invalid end time: {} (expected HH:MM)", ev_t);
                 return Ok(());
             }
-            db::upsert_end(conn, date, e)?;
-            println!("✅ End time {} registered for {}", e, date);
-            changes.push(format!("end={}", e));
-
-            // Dual-write: also record an event (out). Pass explicit position only if provided.
+            db::upsert_end(conn, date, ev_t.as_str())?;
+            println!("\u{2705} End time {} registered for {}", ev_t, date);
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
-            let event_pos_ref: Option<&str> = event_pos_owned.as_deref();
             let args = db::AddEventArgs {
                 date,
-                time: e,
+                time: ev_t.as_str(),
                 kind: "out",
-                position: event_pos_ref,
+                position: event_pos_owned.as_deref(),
                 source: "cli",
                 meta: None,
             };
             if let Err(err) = db::add_event(conn, &args, config) {
-                eprintln!("⚠️ Failed to insert event (out): {}", err);
+                eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
             }
         }
 
-        // Warn if no field provided
         if pos.is_none() && start.is_none() && lunch.is_none() && end.is_none() {
-            eprintln!("⚠️ Please provide at least one of: position, start, lunch, end");
+            eprintln!(
+                "\u{26a0}\u{FE0F} Please provide at least one of: position, start, lunch, end (or use --edit --pair)"
+            );
         }
 
-        // Log the add operation if we recorded changes
-        if !changes.is_empty() {
-            let msg = format!("date={} | {}", date, changes.join(", "));
-            if let Err(e) = db::ttlog(conn, "add", &msg) {
-                eprintln!("⚠️ Failed to write internal log: {}", e);
-            }
-        }
-
-        // Recupera l'id dell'ultima sessione per la data fornita e invoca la stampa dettagliata
+        // Recupera l'id dell'ultima sessione per la data fornita e stampa
         match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
         {
             Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
                 Ok(last_id) => {
-                    // Use the provided connection and config to print the updated record
                     let _ = handle_list_with_highlight(None, None, conn, config, Some(last_id));
                 }
-                Err(rusqlite::Error::QueryReturnedNoRows) => {
-                    // nessuna sessione da stampare
-                }
-                Err(e) => {
-                    eprintln!(
-                        "❌ Errore durante il recupero dell'id della sessione: {}",
-                        e
-                    );
-                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {}
+                Err(e) => eprintln!("\u{274c} Error retrieving session id: {}", e),
             },
-            Err(e) => {
-                eprintln!(
-                    "❌ Impossibile preparare la query per recuperare l'id: {}",
-                    e
-                );
-            }
+            Err(e) => eprintln!("\u{274c} Failed to prepare query for session id: {}", e),
         }
     }
 
@@ -818,7 +958,7 @@ struct EventWithPair {
     unmatched: bool,
 }
 
-/// Calcola per una slice di Event i pair id (sequenza per data) ed il flag unmatched.
+/// Calcola per una slice di Event i pair id (sequenza per data) e il flag unmatched.
 /// Regole:
 ///  - Ogni evento 'in' apre una nuova coppia con pair id incrementale (per data) e unmatched=true
 ///  - Il primo 'out' successivo chiude la prima coppia aperta (FIFO) e diventa stesso pair, unmatched=false (anche per l'in)
@@ -988,6 +1128,8 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
     let mut w_start = 5usize;
     let mut w_end = 5usize;
     let mut w_lunch = 5usize;
+    // We'll display duration as "XH YYM" (e.g. "8H 00M") so compute formatted strings first
+    let mut formatted_dur: Vec<String> = Vec::with_capacity(rows.len());
     let mut w_dur = 3usize;
     for r in rows {
         w_date = w_date.max(r.date.len());
@@ -996,7 +1138,13 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
         w_start = w_start.max(r.start.len());
         w_end = w_end.max(r.end.len());
         w_lunch = w_lunch.max(r.lunch_minutes.to_string().len());
-        w_dur = w_dur.max(r.duration_minutes.to_string().len());
+        // prepare formatted duration
+        let mins = r.duration_minutes.max(0);
+        let hh = mins / 60;
+        let mm = mins % 60;
+        let dur_str = format!("{}H {:02}M", hh, mm);
+        w_dur = w_dur.max(dur_str.len());
+        formatted_dur.push(dur_str);
     }
     println!(
         "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
@@ -1025,8 +1173,9 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
         "-".repeat(w_lunch),
         "-".repeat(w_dur),
     );
-    for r in rows {
+    for (i, r) in rows.iter().enumerate() {
         let pair_disp = format!("{}{}", r.pair, if r.unmatched { "*" } else { "" });
+        let dur_display = &formatted_dur[i];
         println!(
             "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
             r.date,
@@ -1035,7 +1184,7 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
             r.start,
             r.end,
             r.lunch_minutes,
-            r.duration_minutes,
+            dur_display,
             date = w_date,
             pair = w_pair,
             pos = w_pos,
@@ -1151,7 +1300,7 @@ fn print_events_table_with_pairs(
     }
 }
 
-// Mantiene per retrocompatibilità la vecchia funzione ma delega alla nuova con enrich
+// Mantiene per retro compatibilità la vecchia funzione ma delega alla nuova con enrich
 fn print_events_table(events: &[db::Event], title: &str) {
     let enriched = compute_event_pairs(events);
     let plain: Vec<db::Event> = enriched.iter().map(|e| e.event.clone()).collect();

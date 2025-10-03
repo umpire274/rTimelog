@@ -86,6 +86,12 @@ enum Commands {
         /// (Option) End time (HH:MM)
         #[arg(long = "out")]
         end: Option<String>,
+        /// (Option) Pair id to edit (requires --edit)
+        #[arg(long = "pair", help = "Pair id to edit (with --edit)")]
+        edit_pair: Option<usize>,
+        /// Enable edit mode (together with --pair) to update an existing pair's events instead of creating new ones
+        #[arg(long = "edit", help = "Edit existing pair (use with --pair)")]
+        edit: bool,
     },
     /// Delete a work session by ID
     Del {
