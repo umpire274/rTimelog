@@ -1,5 +1,29 @@
 # Changelog
 
+# [0.4.2] - 2025-10-03
+
+### Added
+
+- `del` enhancements:
+  - `del <date>` removes all events and legacy work_session rows for the given date (with interactive confirmation).
+  - `del --pair <pair> <date>` removes only the events belonging to the specified pair for that date (with interactive confirmation); if no events remain for the date the legacy work_sessions row(s) are removed as well.
+- Database helper functions to delete events by date/ids and sessions by date.
+
+### Changed
+
+- Introduced position value `M` (Mixed) to indicate days with multiple working positions; updated `describe_position` to display a friendly label for `M`.
+- Extracted `create_missing_event` into `src/events.rs` and added a unit test to improve testability and reduce duplicate code in `commands.rs`.
+- `list --events --summary` now displays Dur in a human-friendly "XH YYM" format; JSON output remains in minutes (`duration_minutes`).
+- Updated README to document the above behavior and examples.
+
+### Fixed
+
+- Added a migration to extend position CHECKs to include `'M'` and to update existing tables where necessary.
+- Fixed a Clippy warning in `db::delete_events_by_ids` (removed an unnecessary map_identity) so `cargo clippy -D warnings` passes.
+- Updated integration tests to verify deletion-by-date and deletion-by-pair behavior.
+
+---
+
 # [0.4.1] - 2025-10-03
 
 ### Added
@@ -26,7 +50,7 @@
 
 - Event pair aggregation features:
   - Derived **Pair** column when listing events (sequential pairing of `in` with next `out` per date, FIFO).
-  - `--pairs <id>` filter to show only events (or summaries) for a specific pair id.
+  - `--pairs <id>` filter to show only events (or summaries) for a specific pair id (per date).
   - `--summary` mode (only with `--events`) to display one aggregated row per pair (start, end, lunch, net duration, unmatched flag).
   - Enriched JSON output (`--events --json` and `--events --summary --json`) including fields: `pair`, `unmatched`, `lunch_minutes`, `duration_minutes` (summary mode).
 - Unmatched event handling: lone `in` or `out` events are marked with an asterisk (`*`) after the pair id and `"unmatched": true` in JSON.
