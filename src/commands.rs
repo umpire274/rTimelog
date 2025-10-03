@@ -1128,6 +1128,8 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
     let mut w_start = 5usize;
     let mut w_end = 5usize;
     let mut w_lunch = 5usize;
+    // We'll display duration as "XH YYM" (e.g. "8H 00M") so compute formatted strings first
+    let mut formatted_dur: Vec<String> = Vec::with_capacity(rows.len());
     let mut w_dur = 3usize;
     for r in rows {
         w_date = w_date.max(r.date.len());
@@ -1136,7 +1138,13 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
         w_start = w_start.max(r.start.len());
         w_end = w_end.max(r.end.len());
         w_lunch = w_lunch.max(r.lunch_minutes.to_string().len());
-        w_dur = w_dur.max(r.duration_minutes.to_string().len());
+        // prepare formatted duration
+        let mins = r.duration_minutes.max(0);
+        let hh = mins / 60;
+        let mm = mins % 60;
+        let dur_str = format!("{}H {:02}M", hh, mm);
+        w_dur = w_dur.max(dur_str.len());
+        formatted_dur.push(dur_str);
     }
     println!(
         "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
@@ -1165,8 +1173,9 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
         "-".repeat(w_lunch),
         "-".repeat(w_dur),
     );
-    for r in rows {
+    for (i, r) in rows.iter().enumerate() {
         let pair_disp = format!("{}{}", r.pair, if r.unmatched { "*" } else { "" });
+        let dur_display = &formatted_dur[i];
         println!(
             "{:<date$}  {:>pair$}  {:<pos$}  {:>start$}  {:>end$}  {:>lunch$}  {:>dur$}",
             r.date,
@@ -1175,7 +1184,7 @@ fn print_events_summary(rows: &[SummaryRow], title: &str) {
             r.start,
             r.end,
             r.lunch_minutes,
-            r.duration_minutes,
+            dur_display,
             date = w_date,
             pair = w_pair,
             pos = w_pos,
