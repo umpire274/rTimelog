@@ -170,6 +170,31 @@ pub fn delete_session(conn: &Connection, id: i32) -> Result<usize> {
     conn.execute("DELETE FROM work_sessions WHERE id = ?", [id])
 }
 
+/// Delete all work_sessions for a given date. Returns number of rows deleted.
+pub fn delete_sessions_by_date(conn: &Connection, date: &str) -> Result<usize> {
+    conn.execute("DELETE FROM work_sessions WHERE date = ?1", params![date])
+}
+
+/// Delete all events for a given date. Returns number of rows deleted.
+pub fn delete_events_by_date(conn: &Connection, date: &str) -> Result<usize> {
+    conn.execute("DELETE FROM events WHERE date = ?1", params![date])
+}
+
+/// Delete events by a list of ids. Returns number of rows deleted.
+pub fn delete_events_by_ids(conn: &Connection, ids: &[i32]) -> Result<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    // Build a query with the appropriate number of placeholders
+    let mut sql = String::from("DELETE FROM events WHERE id IN (");
+    sql.push_str(&vec!["?"; ids.len()].join(","));
+    sql.push(')');
+    let params_vec: Vec<&dyn ToSql> = ids.iter().map(|i| i as &dyn ToSql).collect();
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let changed = stmt.execute(rusqlite::params_from_iter(params_vec))?;
+    Ok(changed)
+}
+
 /// Return all saved work sessions, optionally filtered by year or year-month.
 pub fn list_sessions(
     conn: &Connection,

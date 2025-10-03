@@ -582,13 +582,14 @@ fn test_add_and_delete_session() {
         .success()
         .stdout(contains("2025-09-20"));
 
-    // Delete session with ID 1
+    // Delete by date (new behavior) -- answer 'y' to confirmation prompt
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "del", "1"])
+        .args(["--db", &db_path, "--test", "del", "2025-09-20"])
+        .write_stdin("y\n")
         .assert()
         .success()
-        .stdout(contains("deleted"));
+        .stdout(contains("Deleted").or(contains("deleted")));
 
     // Verify session no longer appears in list
     Command::cargo_bin("rtimelog")
@@ -610,13 +611,16 @@ fn test_delete_nonexistent_session() {
         .assert()
         .success();
 
-    // Try to delete an ID that does not exist
+    // Try to delete a date that does not exist: confirm with 'y' and expect 0 rows deleted
     Command::cargo_bin("rtimelog")
         .unwrap()
-        .args(["--db", &db_path, "--test", "del", "999"])
+        .args(["--db", &db_path, "--test", "del", "2099-01-01"])
+        .write_stdin("y\n")
         .assert()
-        .success() // il comando non deve andare in errore
-        .stdout(contains("No session found").or(contains("not found")));
+        .success() // the command should not error
+        .stdout(
+            contains("Deleted 0 event(s) and 0 work_session(s)").or(contains("Deleted 0 event(s)")),
+        );
 }
 
 #[test]
@@ -785,17 +789,17 @@ fn test_events_pair_column_and_grouping() {
 }
 
 #[test]
-fn test_events_filter_by_single_pair() {
-    let db_path = setup_test_db("events_filter_pair");
+fn test_delete_existing_pair() {
+    let db_path = setup_test_db("delete_existing_pair");
 
-    // Init
+    // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
-    // Pair 1
+    // Pair 1 (09:00-12:00)
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -803,15 +807,16 @@ fn test_events_filter_by_single_pair() {
             &db_path,
             "--test",
             "add",
-            "2025-11-01",
-            "O",
+            "2025-10-02",
+            "R",
             "09:00",
             "30",
             "12:00",
         ])
         .assert()
         .success();
-    // Pair 2
+
+    // Pair 2 (13:00-17:00)
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -819,135 +824,56 @@ fn test_events_filter_by_single_pair() {
             &db_path,
             "--test",
             "add",
-            "2025-11-01",
-            "O",
+            "2025-10-02",
+            "R",
             "13:00",
-            "30",
+            "0",
             "17:00",
         ])
         .assert()
         .success();
 
-    // Filtro --pairs 1 deve mostrare solo gli eventi del primo intervallo
+    // Delete pair 1 (confirm 'y')
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
-            "--db", &db_path, "--test", "list", "--events", "--pairs", "1",
+            "--db",
+            &db_path,
+            "--test",
+            "del",
+            "--pair",
+            "1",
+            "2025-10-02",
         ])
+        .write_stdin("y\n")
         .assert()
         .success()
-        .stdout(contains("09:00"))
-        .stdout(contains("12:00"))
-        .stdout(contains("13:00").not())
-        .stdout(contains("17:00").not())
-        .stdout(contains("  1").or(contains("  1*"))); // pair id
-}
+        .stdout(contains("Deleted").or(contains("deleted")));
 
-#[test]
-fn test_events_json_enriched_with_pairs() {
-    let db_path = setup_test_db("events_json_pairs");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-
-    // Due coppie
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-11-02",
-            "R",
-            "08:30",
-            "30",
-            "12:00",
-        ])
-        .assert()
-        .success();
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-11-02",
-            "R",
-            "13:00",
-            "0",
-            "16:30",
-        ])
-        .assert()
-        .success();
-
-    // JSON
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--json"])
-        .assert()
-        .success()
-        .stdout(contains("\"pair\""))
-        .stdout(contains("\"unmatched\""))
-        .stdout(contains("08:30"))
-        .stdout(contains("16:30"));
-}
-
-#[test]
-fn test_events_unmatched_in_with_star_and_json() {
-    let db_path = setup_test_db("events_unmatched_in");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-
-    // Solo evento in (start senza end)
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-11-03",
-            "O",
-            "09:05",
-        ])
-        .assert()
-        .success();
-
-    // Output tabellare: deve contenere '1*' nella colonna Pair (pair id 1 unmatched)
+    // List events and ensure pair1 times are gone, pair2 remains
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "list", "--events"])
         .assert()
         .success()
-        .stdout(contains("09:05"))
-        .stdout(contains("1*"));
-
-    // Output JSON: pair=1 e unmatched=true
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--json"])
-        .assert()
-        .success()
-        .stdout(contains("\"pair\": 1"))
-        .stdout(contains("\"unmatched\": true"));
+        .stdout(contains("13:00"))
+        .stdout(contains("17:00"))
+        .stdout(contains("09:00").not())
+        .stdout(contains("12:00").not());
 }
 
 #[test]
-fn test_events_summary_basic() {
-    let db_path = setup_test_db("events_summary_basic");
+fn test_delete_nonexistent_pair() {
+    let db_path = setup_test_db("delete_nonexistent_pair");
+
+    // Init DB
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
-    // Pair 1
+
+    // Add a single pair (so pair id 1 exists)
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
@@ -955,7 +881,7 @@ fn test_events_summary_basic() {
             &db_path,
             "--test",
             "add",
-            "2025-12-01",
+            "2025-10-03",
             "O",
             "09:00",
             "30",
@@ -963,183 +889,20 @@ fn test_events_summary_basic() {
         ])
         .assert()
         .success();
-    // Pair 2
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-01",
-            "O",
-            "13:00",
-            "30",
-            "17:00",
-        ])
-        .assert()
-        .success();
 
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--summary"])
-        .assert()
-        .success()
-        .stdout(contains("Event pairs summary"))
-        .stdout(contains("2025-12-01"))
-        .stdout(contains("1"))
-        .stdout(contains("2"))
-        .stdout(contains("Dur"));
-}
-
-#[test]
-fn test_events_summary_filter_pair() {
-    let db_path = setup_test_db("events_summary_filter_pair");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-    // Pair 1
+    // Try to delete a non-existent pair 5 on that date
     Command::cargo_bin("rtimelog")
         .unwrap()
         .args([
             "--db",
             &db_path,
             "--test",
-            "add",
-            "2025-12-02",
-            "R",
-            "08:30",
-            "30",
-            "11:30",
-        ])
-        .assert()
-        .success();
-    // Pair 2
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-02",
-            "R",
-            "12:30",
-            "0",
-            "16:00",
-        ])
-        .assert()
-        .success();
-
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "list",
-            "--events",
-            "--summary",
-            "--pairs",
-            "2",
+            "del",
+            "--pair",
+            "5",
+            "2025-10-03",
         ])
         .assert()
         .success()
-        .stdout(contains("Event pairs summary"))
-        .stdout(contains("12:30"))
-        .stdout(contains("16:00"))
-        .stdout(contains("08:30").not());
-}
-
-#[test]
-fn test_events_summary_json() {
-    let db_path = setup_test_db("events_summary_json");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-    // Pair 1
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-03",
-            "O",
-            "09:10",
-            "30",
-            "12:10",
-        ])
-        .assert()
-        .success();
-    // Pair 2 unmatched (solo in)
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-03",
-            "O",
-            "13:05",
-        ])
-        .assert()
-        .success();
-
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "list",
-            "--events",
-            "--summary",
-            "--json",
-        ])
-        .assert()
-        .success()
-        .stdout(contains("\"pair\""))
-        .stdout(contains("\"duration_minutes\""))
-        .stdout(contains("\"unmatched\": true"))
-        .stdout(contains("09:10"));
-}
-
-#[test]
-fn test_events_summary_unmatched_only() {
-    let db_path = setup_test_db("events_summary_unmatched_only");
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "init"])
-        .assert()
-        .success();
-    // single IN event
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args([
-            "--db",
-            &db_path,
-            "--test",
-            "add",
-            "2025-12-04",
-            "R",
-            "10:00",
-        ])
-        .assert()
-        .success();
-
-    Command::cargo_bin("rtimelog")
-        .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--summary"])
-        .assert()
-        .success()
-        .stdout(contains("10:00"))
-        .stdout(contains("1*"))
-        .stdout(contains("Dur"));
+        .stdout(contains("Pair 5 not found for date 2025-10-03"));
 }

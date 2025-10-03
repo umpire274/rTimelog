@@ -5,6 +5,7 @@ use r_timelog::config::Config;
 use r_timelog::utils::{describe_position, mins2hhmm, print_separator};
 use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
+use std::io::{Write, stdin};
 use std::process::Command;
 
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
@@ -119,19 +120,114 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
 }
 
 pub fn handle_del(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
-    if let Commands::Del { id } = cmd {
-        match db::delete_session(conn, *id) {
-            Ok(rows) => {
-                if rows > 0 {
-                    println!("🗑️  Session with ID {} deleted", id);
-                    if let Err(e) = db::ttlog(conn, "del", &format!("Deleted session id {}", id)) {
-                        eprintln!("⚠️ Failed to write internal log: {}", e);
-                    }
-                } else {
-                    println!("⚠️  No session found with ID {}", id);
-                }
+    if let Commands::Del { pair, date } = cmd {
+        // validate date
+        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+            eprintln!(
+                "\u{274c} Invalid date format: {} (expected YYYY-MM-DD)",
+                date
+            );
+            return Ok(());
+        }
+
+        if let Some(pair_id) = pair {
+            // Delete only a given pair for the specified date
+            let events = db::list_events_by_date(conn, date)?;
+            if events.is_empty() {
+                println!("⚠️  No events found for date {}", date);
+                return Ok(());
             }
-            Err(e) => eprintln!("❌ Error deleting session: {}", e),
+            let enriched = compute_event_pairs(&events);
+            let ids_to_delete: Vec<i32> = enriched
+                .iter()
+                .filter(|e| e.pair == *pair_id)
+                .map(|e| e.event.id)
+                .collect();
+
+            if ids_to_delete.is_empty() {
+                println!("⚠️  Pair {} not found for date {}", pair_id, date);
+                return Ok(());
+            }
+
+            // Confirmation prompt
+            print!(
+                "Are you sure to delete the pair {} of the date {} (N/y) ? ",
+                pair_id, date
+            );
+            let _ = std::io::stdout().flush();
+            let mut input = String::new();
+            stdin().read_line(&mut input).unwrap_or(0);
+            let choice = input.trim().to_lowercase();
+            if choice != "y" {
+                println!("Aborted. No rows deleted.");
+                return Ok(());
+            }
+
+            match db::delete_events_by_ids(conn, &ids_to_delete) {
+                Ok(rows) => {
+                    println!(
+                        "🗑️  Deleted {} event(s) for pair {} on {}",
+                        rows, pair_id, date
+                    );
+                    let _ = db::ttlog(
+                        conn,
+                        "del",
+                        &format!("Deleted {} events for date={} pair={}", rows, date, pair_id),
+                    );
+                    // After deletion, if no events remain for date, remove work_sessions row; otherwise recompute aggregated position
+                    let remaining = db::list_events_by_date(conn, date)?;
+                    if remaining.is_empty() {
+                        let _ = db::delete_sessions_by_date(conn, date);
+                        println!(
+                            "🗑️  No remaining events: deleted work_sessions rows for {}",
+                            date
+                        );
+                        let _ = db::ttlog(
+                            conn,
+                            "del",
+                            &format!("Deleted work_sessions for date={}", date),
+                        );
+                    } else if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
+                        let _ = db::force_set_position(conn, date, &agg);
+                    }
+                }
+                Err(e) => eprintln!("❌ Error deleting pair events: {}", e),
+            }
+        } else {
+            // Delete all records for the date (work_sessions + events)
+            print!(
+                "Are you sure to delete the records of the date {} (N/y) ? ",
+                date
+            );
+            let _ = std::io::stdout().flush();
+            let mut input = String::new();
+            stdin().read_line(&mut input).unwrap_or(0);
+            let choice = input.trim().to_lowercase();
+            if choice != "y" {
+                println!("Aborted. No rows deleted.");
+                return Ok(());
+            }
+
+            match db::delete_events_by_date(conn, date) {
+                Ok(ev_rows) => match db::delete_sessions_by_date(conn, date) {
+                    Ok(ws_rows) => {
+                        println!(
+                            "🗑️  Deleted {} event(s) and {} work_session(s) for date {}",
+                            ev_rows, ws_rows, date
+                        );
+                        let _ = db::ttlog(
+                            conn,
+                            "del",
+                            &format!(
+                                "Deleted date={} events={} work_sessions={}",
+                                date, ev_rows, ws_rows
+                            ),
+                        );
+                    }
+                    Err(e) => eprintln!("❌ Error deleting work_sessions for date {}: {}", date, e),
+                },
+                Err(e) => eprintln!("❌ Error deleting events for date {}: {}", date, e),
+            }
         }
     }
     Ok(())
