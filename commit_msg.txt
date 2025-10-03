@@ -1,0 +1,6 @@
+Refactor: extract create_missing_event helper and add missing-event test 
+ 
+- Extracted shared function create_missing_event from handle_add to improve reuse and readability. 
+- Replaced local closure with call to the new private helper. 
+- Added integration test 	ests/missing_event_tests.rs verifying creating missing 'in' when only 'out' exists. 
+- Ran cargo test locally and ensured all tests pass. 

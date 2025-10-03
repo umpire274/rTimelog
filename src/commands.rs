@@ -7,6 +7,46 @@ use r_timelog::{db, logic, utils};
 use rusqlite::Connection;
 use std::process::Command;
 
+// Private helper to create a missing event (in/out) and return the created event if found.
+fn create_missing_event(
+    conn: &mut Connection,
+    date: &str,
+    time_val: &str,
+    kind_val: &str,
+    pos_opt: &Option<String>,
+    prefer_other: Option<&db::Event>,
+    config: &Config,
+) -> rusqlite::Result<Option<db::Event>> {
+    // Determine preferred position: explicit CLI pos has priority, then other event's position, then config default
+    let p_norm = pos_opt.clone().unwrap_or_else(|| {
+        prefer_other
+            .map(|e| e.position.clone())
+            .unwrap_or_else(|| config.default_position.clone())
+    });
+
+    // Build AddEventArgs with references valid for the duration of this function call
+    let args = db::AddEventArgs {
+        date,
+        time: time_val,
+        kind: kind_val,
+        position: Some(p_norm.as_str()),
+        source: "cli",
+        meta: None,
+    };
+
+    if let Err(e) = db::add_event(conn, &args, config) {
+        eprintln!(
+            "\u{26a0}\u{FE0F} Failed to create missing {} event: {}",
+            kind_val, e
+        );
+    }
+
+    let found = db::list_events_by_date(conn, date)?
+        .into_iter()
+        .find(|ev| ev.kind == kind_val && ev.time == time_val);
+    Ok(found)
+}
+
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
     if let Commands::Conf {
         print_config,
@@ -233,49 +273,34 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
 
             // Creazione eventi mancanti se l'utente prova a completare la coppia
-            // Helper locale: crea un evento (in/out) se mancante e restituisce l'event creato se presente
-            let mut create_missing_event = |time_val: &str,
-                                            kind_val: &str,
-                                            prefer_other: Option<&db::Event>|
-             -> rusqlite::Result<Option<db::Event>> {
-                // Determina posizione preferita: flag pos (CLI) ha priorità, poi la posizione dell'altro evento (se presente), poi fallback config
-                let p_norm = pos.clone().unwrap_or_else(|| {
-                    prefer_other
-                        .map(|e| e.position.clone())
-                        .unwrap_or_else(|| config.default_position.clone())
-                });
-                let args = db::AddEventArgs {
-                    date,
-                    time: time_val,
-                    kind: kind_val,
-                    position: Some(p_norm.as_str()),
-                    source: "cli",
-                    meta: None,
-                };
-                if let Err(e) = db::add_event(conn, &args, config) {
-                    eprintln!(
-                        "\u{26a0}\u{FE0F} Failed to create missing {} event: {}",
-                        kind_val, e
-                    );
-                }
-                let found = db::list_events_by_date(conn, date)?
-                    .into_iter()
-                    .find(|ev| ev.kind == kind_val && ev.time == time_val);
-                Ok(found)
-            };
-
-            // Se l'utente fornisce un start ma manca l'evento 'in', lo creiamo qui
+            // If user provided a start but the 'in' event is missing, create it using the shared helper
             if let Some(sv) = start.as_ref()
                 && in_event.is_none()
             {
-                in_event = create_missing_event(sv.as_str(), "in", out_event.as_ref())?;
+                in_event = create_missing_event(
+                    conn,
+                    date,
+                    sv.as_str(),
+                    "in",
+                    &pos,
+                    out_event.as_ref(),
+                    config,
+                )?;
             }
 
-            // Se l'utente fornisce un end ma manca l'evento 'out', lo creiamo qui
+            // If user provided an end but the 'out' event is missing, create it using the shared helper
             if let Some(ev_t) = end.as_ref()
                 && out_event.is_none()
             {
-                out_event = create_missing_event(ev_t.as_str(), "out", in_event.as_ref())?;
+                out_event = create_missing_event(
+                    conn,
+                    date,
+                    ev_t.as_str(),
+                    "out",
+                    &pos,
+                    in_event.as_ref(),
+                    config,
+                )?;
             }
 
             // Applica modifiche sugli eventi esistenti
