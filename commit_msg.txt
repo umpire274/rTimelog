@@ -1,7 +1,0 @@
-Fix: resolve compilation errors and deduplicate event-creation logic in src/commands.rs 
- 
-- Fixed mismatched delimiters and invalid patterns in handle_add that caused parsing/compiler errors. 
-- Removed lifetime-unsafe closure and construct AddEventArgs inline to avoid temporary borrows. 
-- Consolidated duplicate 'create missing event' logic into a single local helper to reduce duplication. 
-- Adjusted validations and conditions for robust time parsing and updates. 
-- Ran cargo build and full test suite locally; all tests passed. 
