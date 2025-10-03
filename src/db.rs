@@ -624,9 +624,8 @@ pub fn delete_events_by_ids_and_recompute_sessions(
         sql.push(')');
         let params_vec: Vec<&dyn ToSql> = ids.iter().map(|i| i as &dyn ToSql).collect();
         let mut del_stmt = tx.prepare(&sql)?;
-        let changed = del_stmt.execute(rusqlite::params_from_iter(params_vec))?;
-        // del_stmt dropped here at end of scope
-        changed
+
+        del_stmt.execute(rusqlite::params_from_iter(params_vec))?
     };
 
     // Query remaining events for the date inside the same transaction; keep statement scoped
