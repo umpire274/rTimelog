@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// Create a unique test DB path inside the system temp dir
 fn setup_test_db(name: &str) -> String {
     let mut path: PathBuf = env::temp_dir();
-    path.push(format!("{}_rtimelog.sqlite", name));
+    path.push(format!("{}_rtimelogger.sqlite", name));
     let db_path = path.to_string_lossy().to_string();
     let _ = std::fs::remove_file(&db_path);
     db_path
@@ -17,21 +17,21 @@ fn test_create_missing_in_when_only_out_exists() {
     let db_path = setup_test_db("missing_event_in");
 
     // Init DB
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
     // Create only an OUT event for the date (no start)
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "add", "2025-10-01", "--out", "17:00"])
         .assert()
         .success();
 
     // Verify currently there is a single out event
-    let out_only = Command::cargo_bin("rtimelog")
+    let out_only = Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "--test", "list", "--events", "--json"])
         .output()
@@ -43,7 +43,7 @@ fn test_create_missing_in_when_only_out_exists() {
     assert_eq!(arr[0]["kind"], "out");
 
     // Now use explicit edit on pair 1 to add the missing IN event
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args([
             "--db",
@@ -60,7 +60,7 @@ fn test_create_missing_in_when_only_out_exists() {
         .success();
 
     // Re-list events and expect both in and out
-    let both = Command::cargo_bin("rtimelog")
+    let both = Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "--test", "list", "--events", "--json"])
         .output()
