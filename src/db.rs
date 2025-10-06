@@ -106,7 +106,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
-            function TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            target TEXT DEFAULT '',
             message TEXT NOT NULL
         );
 
@@ -274,11 +275,11 @@ pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
     upsert_field(conn, date, "end_time", end, "O")
 }
 
-pub fn ttlog(conn: &Connection, function: &str, message: &str) -> Result<()> {
+pub fn ttlog(conn: &Connection, operation: &str, message: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339(); // ISO 8601
     let mut stmt =
-        conn.prepare_cached("INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)")?;
-    stmt.execute(params![&now, function, message])?;
+        conn.prepare_cached("INSERT INTO log (date, operation, message) VALUES (?1, ?2, ?3)")?;
+    stmt.execute(params![&now, operation, message])?;
     Ok(())
 }
 
@@ -534,7 +535,7 @@ pub fn add_event(
                                 lunch_val, prev_out.id, args.date
                             );
                             tx.execute(
-                                "INSERT INTO log (date, function, message) VALUES (?1, ?2, ?3)",
+                                "INSERT INTO log (date, operation, message) VALUES (?1, ?2, ?3)",
                                 params![Utc::now().to_rfc3339(), "auto_lunch", msg],
                             )?;
                         }
@@ -604,7 +605,6 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
 }
 
 /// Delete events by ids and recompute/update work_sessions for the given date atomically.
-/// Returns the number of deleted event rows.
 pub fn delete_events_by_ids_and_recompute_sessions(
     conn: &mut Connection,
     ids: &[i32],

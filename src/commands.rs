@@ -429,6 +429,9 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         // NORMAL MODE (always create / upsert fields, never implicit edit of existing pair)
         // --------------------------------------------------
 
+        // Applica modifiche sugli eventi esistenti
+        let mut changes: Vec<String> = Vec::new();
+
         // Handle position
         if let Some(p) = pos.as_ref() {
             let ptrim = p.trim().to_uppercase();
@@ -442,6 +445,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             let _ = db::upsert_position(conn, date, &ptrim);
             let (pos_string, _) = describe_position(&ptrim);
             println!("\u{2705} Position {} set for {}", pos_string, date);
+            changes.push(format!("position={}", p));
         }
 
         // Handle start time
@@ -452,6 +456,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
             db::upsert_start(conn, date, sv.as_str())?;
             println!("\u{2705} Start time {} registered for {}", sv, date);
+            changes.push(format!("start={}", sv));
+
             // event in
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
             let args = db::AddEventArgs {
@@ -482,6 +488,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
             db::upsert_lunch(conn, date, l)?;
             println!("\u{2705} Lunch {} min registered for {}", l, date);
+            changes.push(format!("lunch={}", l));
+
             // Also, if there is an out event present, set its lunch_break for compatibility
             match db::last_out_before(conn, date, "23:59") {
                 Ok(Some(out_ev)) => {
@@ -510,6 +518,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
             db::upsert_end(conn, date, ev_t.as_str())?;
             println!("\u{2705} End time {} registered for {}", ev_t, date);
+            changes.push(format!("end={}", ev_t));
+
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
             let args = db::AddEventArgs {
                 date,
@@ -532,6 +542,14 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             eprintln!(
                 "\u{26a0}\u{FE0F} Please provide at least one of: position, start, lunch, end (or use --edit --pair)"
             );
+        }
+
+        // Log the add operation if we recorded changes
+        if !changes.is_empty() {
+            let msg = format!("date={} | {}", date, changes.join(", "));
+            if let Err(e) = db::ttlog(conn, "add", &msg) {
+                eprintln!("⚠️ Failed to write internal log: {}", e);
+            }
         }
 
         // If the user provided only --pos (no events), keep existing behavior; otherwise aggregate handled above.
@@ -1035,21 +1053,30 @@ pub fn handle_list_with_highlight(
 /// Print rows from the internal `log` table when requested
 pub fn handle_log(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
     if matches!(cmd, Commands::Log { print: true }) {
-        let mut stmt =
-            conn.prepare_cached("SELECT id, date, function, message FROM log ORDER BY id ASC")?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, date, operation, target, message FROM log ORDER BY id ASC",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i32>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })?;
 
         println!("📜 Internal log:");
         for r in rows {
-            let (id, date, function, message) = r?;
-            println!("{:>3}: {} | {} | {}", id, date, function, message);
+            let (id, date, operation, target, message) = r?;
+            if target.is_empty() {
+                println!("{:>3}: {} | {} | {}", id, date, operation, message);
+            } else {
+                println!(
+                    "{:>3}: {} | {} ({}) | {}",
+                    id, date, operation, target, message
+                );
+            }
         }
     }
     Ok(())

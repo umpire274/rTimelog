@@ -12,13 +12,85 @@ pub struct Migration {
     pub up: fn(&Connection) -> rusqlite::Result<()>, // ✅ giusto
 }
 
+/// Aggiorna la tabella `log` legacy (con colonna `function`) al nuovo schema con `operation` e `target`.
+fn upgrade_legacy_log_schema(conn: &Connection) -> rusqlite::Result<()> {
+    // Verifica se esiste la tabella log
+    let mut exists_stmt =
+        conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='log'")?;
+    let exists = exists_stmt
+        .query_row([], |row| row.get::<_, String>(0))
+        .optional()?;
+    if exists.is_none() {
+        return Ok(()); // nulla da aggiornare
+    }
+
+    // Ispeziona le colonne
+    let mut col_stmt = conn.prepare("PRAGMA table_info('log')")?;
+    let cols_iter = col_stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+    })?;
+    let mut has_function = false;
+    let mut has_operation = false;
+    let mut has_target = false;
+    for c in cols_iter {
+        let (name, _ty) = c?;
+        match name.as_str() {
+            "function" => has_function = true,
+            "operation" => has_operation = true,
+            "target" => has_target = true,
+            _ => {}
+        }
+    }
+
+    // Caso 1: vecchio schema (ha function e non ha operation) -> ricostruzione tabella
+    if has_function && !has_operation {
+        // Rinomina e ricrea
+        conn.execute_batch(
+            r#"
+            ALTER TABLE log RENAME TO log_old;
+            CREATE TABLE log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                target TEXT DEFAULT '',
+                message TEXT NOT NULL
+            );
+            INSERT INTO log (id, date, operation, message)
+            SELECT id, date, function, message FROM log_old;
+            DROP TABLE log_old;
+            "#,
+        )?;
+        println!("🔄 Upgraded legacy log table: added columns operation/target and migrated data.");
+        return Ok(());
+    }
+
+    // Caso 2: tabella già ha operation ma manca target -> aggiungo colonna
+    if has_operation && !has_target {
+        conn.execute("ALTER TABLE log ADD COLUMN target TEXT DEFAULT ''", [])?;
+        println!("🔄 Added missing 'target' column to log table.");
+    }
+
+    Ok(())
+}
+
 /// Assicurati che esista la tabella che traccia le migrazioni applicate
 fn ensure_migrations_table(conn: &Connection) -> Result<(), Error> {
+    // Prima prova ad aggiornare eventuale schema legacy della tabella log
+    upgrade_legacy_log_schema(conn).map_err(|e| {
+        Error::SqliteFailure(
+            ffi::Error::new(1),
+            Some(format!("Failed to upgrade legacy log table: {}", e)),
+        )
+    })?;
+    // Con la nuova strategia usiamo la tabella `log` per tracciare le migrazioni
     conn.execute_batch(
         r#"
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            version     TEXT PRIMARY KEY,
-            applied_at  TEXT NOT NULL
+        CREATE TABLE IF NOT EXISTS log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            target TEXT DEFAULT '',
+            message TEXT NOT NULL
         );
         "#,
     )
@@ -27,24 +99,113 @@ fn ensure_migrations_table(conn: &Connection) -> Result<(), Error> {
 /// Leggi le versioni già applicate
 fn applied_versions(conn: &Connection) -> Result<HashSet<String>, Error> {
     let mut set = HashSet::new();
-    let mut stmt = conn.prepare("SELECT version FROM schema_migrations")?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    for r in rows {
-        set.insert(r?);
+
+    // 1) If legacy schema_migrations table exists, read versions from it
+    let mut stmt = conn.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
+    )?;
+    if stmt
+        .query_row([], |row| row.get::<_, String>(0))
+        .optional()?
+        .is_some()
+    {
+        let mut stmt2 = conn.prepare("SELECT version FROM schema_migrations")?;
+        let rows = stmt2.query_map([], |row| row.get::<_, String>(0))?;
+        for r in rows {
+            set.insert(r?);
+        }
     }
+
+    // 2) If `log` table exists, detect its columns and read migration markers accordingly
+    let mut stmt_log =
+        conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='log'")?;
+    if stmt_log
+        .query_row([], |row| row.get::<_, String>(0))
+        .optional()?
+        .is_some()
+    {
+        // inspect columns of log
+        let mut col_stmt = conn.prepare("PRAGMA table_info('log')")?;
+        let mut has_target = false;
+        // PRAGMA table_info returns rows with columns: cid, name, type, notnull, dflt_value, pk
+        let cols = col_stmt.query_map([], |row| row.get::<_, String>(1))?;
+        for c in cols {
+            let name = c?;
+            if name == "target" {
+                has_target = true;
+                break;
+            }
+        }
+
+        if has_target {
+            // safe to query target column
+            let mut stmt3 = conn.prepare(
+                "SELECT target FROM log WHERE operation IN ('migration_applied','migration')",
+            )?;
+            let rows3 = stmt3.query_map([], |row| row.get::<_, String>(0))?;
+            for r in rows3 {
+                let v = r?;
+                if !v.is_empty() {
+                    set.insert(v);
+                }
+            }
+        } else {
+            // Fallback for old log schema: try to infer applied migrations from `function` and `message` content
+            let mut stmt_fallback = conn.prepare("SELECT function, message FROM log")?;
+            let rows = stmt_fallback.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for r in rows {
+                let (func, msg) = r?;
+                // If message contains "Applied migration <version>", extract version
+                if let Some(idx) = msg.find("Applied migration ") {
+                    let after = msg[idx + "Applied migration ".len()..].trim();
+                    if !after.is_empty() {
+                        let ver = after
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .trim_matches(|c: char| !c.is_ascii());
+                        if !ver.is_empty() {
+                            set.insert(ver.to_string());
+                            continue;
+                        }
+                    }
+                }
+                // If the function column itself looks like a migration version (starts with digits and contains '_'), take it
+                if !func.is_empty()
+                    && func
+                        .chars()
+                        .next()
+                        .map(|ch| ch.is_ascii_digit())
+                        .unwrap_or(false)
+                    && func.contains('_')
+                {
+                    set.insert(func);
+                }
+            }
+        }
+    }
+
     Ok(set)
 }
 
 /// Segna come applicata una migrazione (solo dopo successo)
 fn mark_applied(conn: &Connection, version: &str) -> Result<(), Error> {
+    // Instead of writing into a dedicated schema_migrations table, insert a marker into `log`.
     conn.execute(
-        "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
-        (version, Utc::now().to_rfc3339()),
+        "INSERT INTO log (date, operation, target, message) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            Utc::now().to_rfc3339(),
+            "migration_applied",
+            version,
+            format!("Applied migration {}", version)
+        ],
     )?;
     Ok(())
 }
 
-/// Elenco delle migrazioni in ORDINE (verranno eseguite in sequenza)
+/// Esegui solo le migrazioni non ancora applicate
 static ALL_MIGRATIONS: &[Migration] = &[
     Migration {
         version: "20250919_0001_create_log_table_and_position_H",
@@ -86,9 +247,14 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Extend position CHECK to include 'M' (Mixed) and migrate existing tables if necessary",
         up: migrate_to_038_add_m,
     },
+    // Prima migrazione: unifica schema_migrations dentro log e rimuove la tabella legacy
+    Migration {
+        version: "20251030_0009_unify_schema_migrations_into_log",
+        description: "Import schema_migrations rows into the unified log table and drop schema_migrations",
+        up: migrate_to_unify_schema_migrations,
+    },
 ];
 
-/// Esegui solo le migrazioni non ancora applicate
 pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
     // Ensure base tables exist (defensive): create work_sessions and log if missing so migrations can reference them.
     conn.execute_batch(
@@ -104,7 +270,8 @@ pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
         CREATE TABLE IF NOT EXISTS log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
-            function TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            target TEXT DEFAULT '',
             message TEXT NOT NULL
         );
         ",
@@ -133,7 +300,8 @@ fn migrate_to_030_rel(conn: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT NOT NULL,
-            function TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            target TEXT DEFAULT '',
             message TEXT NOT NULL
         );
         ",
@@ -321,10 +489,10 @@ fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    let mut value: Value = serde_yaml::from_str(&content)
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut value: Value =
+        serde_yaml::from_str(&content).map_err(|e| Error::ToSqlConversionFailure(Box::new(e)))?;
 
     if let Some(map) = value.as_mapping_mut() {
         let key = Value::String("separator_char".to_string());
@@ -332,9 +500,8 @@ fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
             map.insert(key.clone(), Value::String("-".to_string()));
             // write back
             let new_yaml = serde_yaml::to_string(&map)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            std::fs::write(&path, new_yaml)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                .map_err(|e| Error::ToSqlConversionFailure(Box::new(e)))?;
+            fs::write(&path, new_yaml).map_err(|e| Error::ToSqlConversionFailure(Box::new(e)))?;
             db::ttlog(
                 conn,
                 "migrate_to_035_rel",
@@ -414,14 +581,14 @@ fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite
 
         // Insert end event if present and not already migrated
         if !end_time.trim().is_empty() {
-            let exists: Option<i32> = conn
+            let exists2: Option<i32> = conn
                 .query_row(
                     "SELECT id FROM events WHERE date = ?1 AND time = ?2 AND kind = 'out' AND source = 'migration' LIMIT 1",
                     params![&date, &end_time],
                     |row| row.get(0),
                 )
                 .optional()?;
-            if exists.is_none() {
+            if exists2.is_none() {
                 conn.execute(
                     "INSERT INTO events (date, time, kind, position, lunch_break, source, meta, created_at) VALUES (?1, ?2, 'out', ?3, ?4, 'migration', '', ?5)",
                     params![&date, &end_time, &position, lunch_break, Utc::now().to_rfc3339()],
@@ -431,88 +598,97 @@ fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite
         }
     }
 
-    let msg = format!("migrated {} event(s) from work_sessions", inserted);
-    db::ttlog(conn, "migrate_to_037_migrate_work_sessions_to_events", &msg)?;
-    println!("✅ {}", msg);
+    if inserted > 0 {
+        db::ttlog(
+            conn,
+            "migrate_to_037_migrate_work_sessions_to_events",
+            &format!("Inserted {} events from work_sessions migration", inserted),
+        )?;
+    }
 
     Ok(())
 }
 
 fn migrate_to_038_add_m(conn: &Connection) -> rusqlite::Result<()> {
-    // Detect work_sessions table with old CHECK and rewrite to include 'M'
+    // This migration extends the CHECK to include 'M' for Mixed; only applies if work_sessions exists
     let mut stmt =
         conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
     let table_sql: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
 
-    if let Some(sql) = table_sql {
-        // if the existing table still has C but not M, migrate
-        if sql.contains("CHECK(position IN ('O','R','H','C'))")
-            || sql.contains("CHECK(position IN ('O','R','H','C')")
-        {
-            println!(
-                "⚠️  Old schema detected, migrating work_sessions to support 'M' (Mixed) and updating events table if needed..."
+    if let Some(sql) = table_sql
+        && sql.contains("CHECK(position IN ('O','R','H','C'))")
+    {
+        println!("⚠️  Old schema detected, migrating work_sessions to support 'M' (Mixed)...");
+        conn.execute_batch(
+            "
+            ALTER TABLE work_sessions RENAME TO work_sessions_old;
+
+            CREATE TABLE work_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                position TEXT NOT NULL CHECK(position IN ('O','R','H','C','M')),
+                start_time TEXT DEFAULT '',
+                lunch_break INTEGER DEFAULT 0,
+                end_time TEXT DEFAULT ''
             );
 
-            conn.execute_batch(
-                "
-                ALTER TABLE work_sessions RENAME TO work_sessions_old;
+            INSERT INTO work_sessions (id, date, position, start_time, lunch_break, end_time)
+            SELECT id, date, position, start_time, lunch_break, end_time FROM work_sessions_old;
 
-                CREATE TABLE work_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT NOT NULL,
-                    position TEXT NOT NULL CHECK(position IN ('O','R','H','C','M')),
-                    start_time TEXT DEFAULT '',
-                    lunch_break INTEGER DEFAULT 0,
-                    end_time TEXT DEFAULT ''
-                );
+            DROP TABLE work_sessions_old;
+            ",
+        )?;
 
-                INSERT INTO work_sessions (id, date, position, start_time, lunch_break, end_time)
-                SELECT id, date, position, start_time, lunch_break, end_time
-                FROM work_sessions_old;
-
-                DROP TABLE work_sessions_old;
-                ",
-            )?;
-
-            // Also update events table if present and missing 'M'
-            let mut stmt_ev =
-                conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")?;
-            let ev_sql: Option<String> = stmt_ev.query_row([], |row| row.get(0)).optional()?;
-            if let Some(esql) = ev_sql
-                && (esql.contains("CHECK(position IN ('O','R','H','C'))")
-                    || esql.contains("CHECK(position IN ('O','R','H','C')"))
-            {
-                conn.execute_batch(
-                    "
-                        ALTER TABLE events RENAME TO events_old;
-
-                        CREATE TABLE events (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            date TEXT NOT NULL,
-                            time TEXT NOT NULL,
-                            kind TEXT NOT NULL CHECK(kind IN ('in','out')),
-                            position TEXT NOT NULL DEFAULT 'O' CHECK(position IN ('O','R','H','C','M')),
-                            lunch_break INTEGER NOT NULL DEFAULT 0,
-                            source TEXT NOT NULL DEFAULT 'cli',
-                            meta TEXT DEFAULT '',
-                            created_at TEXT NOT NULL
-                        );
-
-                        INSERT INTO events (id, date, time, kind, position, lunch_break, source, meta, created_at)
-                        SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events_old;
-
-                        DROP TABLE events_old;
-                        "
-                )?;
-            }
-
-            db::ttlog(
-                conn,
-                "migrate_to_038_add_m",
-                "Migration to add 'M' to position CHECK completed.",
-            )?;
-            println!("✅ Migration completed: added 'M' to position checks.");
-        }
+        db::ttlog(
+            conn,
+            "migrate_to_038_add_m",
+            "Migration table 'work_sessions' to include 'M' completed.",
+        )?;
     }
+
+    Ok(())
+}
+
+/// New migration: import schema_migrations into unified log and drop legacy table
+fn migrate_to_unify_schema_migrations(conn: &Connection) -> rusqlite::Result<()> {
+    // Check if schema_migrations exists
+    let mut stmt = conn.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
+    )?;
+    if stmt
+        .query_row([], |row| row.get::<_, String>(0))
+        .optional()?
+        .is_some()
+    {
+        // Read all rows
+        let mut sel = conn.prepare("SELECT version, applied_at FROM schema_migrations")?;
+        let rows = sel.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for r in rows {
+            let (version, applied_at) = r?;
+            // Insert into log
+            conn.execute(
+                "INSERT INTO log (date, operation, target, message) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    applied_at,
+                    "migration_applied",
+                    version,
+                    format!("Imported migration {} from schema_migrations", version)
+                ],
+            )?;
+        }
+
+        // Drop legacy table
+        conn.execute_batch("DROP TABLE IF EXISTS schema_migrations;")?;
+
+        db::ttlog(
+            conn,
+            "migrate_to_unify_schema_migrations",
+            "Imported schema_migrations into unified log and dropped legacy table",
+        )?;
+        println!("✅ schema_migrations imported into log and dropped.");
+    }
+
     Ok(())
 }
