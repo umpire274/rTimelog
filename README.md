@@ -30,13 +30,6 @@ This release brings safer deletion primitives, a new mixed position flag and a n
 
 ---
 
-## What's new in v0.3.6 *(previous)*
-
-- Added: new `log` subcommand with `--print` to display rows from the internal `log` table for debugging and audit
-  purposes.
-
----
-
 ## ✨ Features
 
 - Add, update, delete and list work sessions.
@@ -72,6 +65,31 @@ This release brings safer deletion primitives, a new mixed position flag and a n
 - Cross-platform configuration file management:
     - Linux/macOS: `$HOME/.rtimelog/rtimelog.conf`
     - Windows: `%APPDATA%\rtimelog\rtimelog.conf`
+
+---
+
+## 📦 Installation
+
+[![Packaging status](https://repology.org/badge/vertical-allrepos/rtimelog.svg)](https://repology.org/project/rtimelog/versions)
+
+### 🐧 AUR (Arch Linux)
+
+[![AUR](https://img.shields.io/aur/version/rtimelog)](https://aur.archlinux.org/packages/rtimelog)
+
+```bash
+yay -S rtimelog
+# or
+paru -S rtimelog
+```
+
+### 🍺 Homebrew (macOS/Linux)
+
+[![Homebrew Tap](https://img.shields.io/badge/homebrew-tap-brightgreen)](https://github.com/umpire274/homebrew-rtimelog)
+
+```bash
+brew tap umpire274/rtimelog
+brew install rtimelog
+```
 
 ---
 
