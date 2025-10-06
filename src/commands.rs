@@ -529,9 +529,23 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 source: "cli",
                 meta: None,
             };
-            if let Err(err) = db::add_event(conn, &args, config) {
-                eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
+            match db::add_event(conn, &args, config) {
+                Ok(event_id) => {
+                    if let Some(l) = lunch
+                        && l > 0
+                        && let Err(e) = db::set_event_lunch(conn, event_id as i32, l)
+                    {
+                        eprintln!(
+                            "\u{26a0}\u{FE0F} Failed to set lunch on out event {}: {}",
+                            event_id, e
+                        );
+                    }
+                }
+                Err(err) => {
+                    eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
+                }
             }
+
             // Recompute aggregate position after inserting out event
             if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
                 let _ = db::force_set_position(conn, date, &agg);

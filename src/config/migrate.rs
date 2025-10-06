@@ -186,24 +186,22 @@ pub fn run_config_migration(conn: &Connection) -> Result<(), Error> {
 pub fn run_fs_migration_with(new_dir: PathBuf, old_dir: PathBuf) -> io::Result<()> {
     // tutta la logica di run_fs_migration, ma usando i parametri
     // ----------------------------------------------------------
-    if old_dir.exists() && !new_dir.exists() {
-        if fs::rename(&old_dir, &new_dir).is_err() {
-            fs::create_dir_all(&new_dir)?;
-            for ent in fs::read_dir(&old_dir)? {
-                let ent = ent?;
-                let from = ent.path();
-                let fname = match from.file_name() {
-                    Some(n) => n,
-                    None => continue,
-                };
-                let to = new_dir.join(&fname);
-                if let Err(_) = fs::rename(&from, &to) {
-                    fs::copy(&from, &to)?;
-                    let _ = fs::remove_file(&from);
-                }
+    if old_dir.exists() && !new_dir.exists() && fs::rename(&old_dir, &new_dir).is_err() {
+        fs::create_dir_all(&new_dir)?;
+        for ent in fs::read_dir(&old_dir)? {
+            let ent = ent?;
+            let from = ent.path();
+            let fname = match from.file_name() {
+                Some(n) => n,
+                None => continue,
+            };
+            let to = new_dir.join(fname);
+            if fs::rename(&from, &to).is_err() {
+                fs::copy(&from, &to)?;
+                let _ = fs::remove_file(&from);
             }
-            let _ = fs::remove_dir(&old_dir);
         }
+        let _ = fs::remove_dir(&old_dir);
     }
 
     // rename config file if present
@@ -215,49 +213,38 @@ pub fn run_fs_migration_with(new_dir: PathBuf, old_dir: PathBuf) -> io::Result<(
     // update db reference inside config
     if new_conf.exists() {
         let content = fs::read_to_string(&new_conf)?;
-        if let Ok(mut yaml) = serde_yaml::from_str::<Value>(&content) {
-            if let Some(map) = yaml.as_mapping_mut() {
-                let key = Value::String("database".to_string());
-                if let Some(val) = map.get(&key) {
-                    if let Some(dbstr) = val.as_str() {
-                        let db_path = PathBuf::from(dbstr);
-                        let is_old_db = db_path
-                            .file_name()
-                            .map(|s| s.to_string_lossy().to_lowercase() == "rtimelog.sqlite")
-                            .unwrap_or(false);
+        if let Ok(mut yaml) = serde_yaml::from_str::<Value>(&content)
+            && let Some(map) = yaml.as_mapping_mut()
+        {
+            let key = Value::String("database".to_string());
+            if let Some(val) = map.get(&key)
+                && let Some(dbstr) = val.as_str()
+            {
+                let db_path = PathBuf::from(dbstr);
+                let is_old_db = db_path
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_lowercase() == "rtimelog.sqlite")
+                    .unwrap_or(false);
 
-                        if is_old_db {
-                            let actual_old_db = if db_path.is_absolute() {
-                                db_path.clone()
-                            } else {
-                                new_dir.join(&db_path)
-                            };
-                            let actual_new_db = actual_old_db.with_file_name("rtimelogger.sqlite");
+                if is_old_db {
+                    let actual_old_db = if db_path.is_absolute() {
+                        db_path.clone()
+                    } else {
+                        new_dir.join(&db_path)
+                    };
+                    let actual_new_db = actual_old_db.with_file_name("rtimelogger.sqlite");
 
-                            if actual_old_db.exists() && !actual_new_db.exists() {
-                                if let Err(_) = fs::rename(&actual_old_db, &actual_new_db) {
-                                    fs::copy(&actual_old_db, &actual_new_db)?;
-                                    let _ = fs::remove_file(&actual_old_db);
-                                }
-                            }
-                            move_or_copy(&actual_old_db, &actual_new_db)?;
+                    move_or_copy(&actual_old_db, &actual_new_db)?;
 
-                            let new_db_str = PathBuf::from(dbstr)
-                                .with_file_name("rtimelogger.sqlite")
-                                .to_string_lossy()
-                                .to_string();
-                            map.insert(key.clone(), Value::String(new_db_str));
-                            let serialized = serde_yaml::to_string(&yaml).map_err(|e| {
-                                io::Error::new(
-                                    io::ErrorKind::Other,
-                                    format!("serialize error: {}", e),
-                                )
-                            })?;
-                            fs::write(&new_conf, serialized).map_err(|e| {
-                                io::Error::new(io::ErrorKind::Other, format!("write error: {}", e))
-                            })?;
-                        }
-                    }
+                    let new_db_str = PathBuf::from(dbstr)
+                        .with_file_name("rtimelogger.sqlite")
+                        .to_string_lossy()
+                        .to_string();
+                    map.insert(key.clone(), Value::String(new_db_str));
+                    let serialized = serde_yaml::to_string(&yaml)
+                        .map_err(|e| io::Error::other(format!("serialize error: {}", e)))?;
+                    fs::write(&new_conf, serialized)
+                        .map_err(|e| io::Error::other(format!("write error: {}", e)))?;
                 }
             }
         }
