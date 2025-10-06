@@ -253,6 +253,12 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Import schema_migrations rows into the unified log table and drop schema_migrations",
         up: migrate_to_unify_schema_migrations,
     },
+    // Config rename migration: rtimelog -> rtimelogger
+    Migration {
+        version: "20251006_0010_rename_rtimelog_to_rtimelogger",
+        description: "Rename configuration directory/file and DB from 'rtimelog' to 'rtimelogger'",
+        up: crate::config::migrate::run_config_migration,
+    },
 ];
 
 pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {

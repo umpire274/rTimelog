@@ -9,6 +9,21 @@ use rtimelogger::cli::{Cli, Commands};
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
 
+    // Ensure filesystem migration ran early (before any DB open). This moves old "%APPDATA%/rtimelog" or
+    // "$HOME/.rtimelog" to the new location and renames config/db references if needed.
+    if let Err(e) = rtimelogger::config::migrate::run_fs_migration() {
+        eprintln!("⚠️  Filesystem migration warning: {}", e);
+    }
+
+    // Ensure config dir exists so Connection::open can create the DB file inside it.
+    if let Err(e) = std::fs::create_dir_all(Config::config_dir()) {
+        eprintln!("❌ Failed to create config directory: {}", e);
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(1),
+            Some(format!("Failed to create config dir: {}", e)),
+        ));
+    }
+
     // Determine DB path without loading the full config (Config::load may read files under
     // $HOME or %APPDATA% which tests may control); prefer to avoid reading it when --test is set.
     let db_path = if let Some(custom) = &cli.db {
@@ -60,7 +75,86 @@ fn main() -> rusqlite::Result<()> {
 
     // For other commands, open a single shared connection, set useful PRAGMA and ensure DB is initialized (creates
     // base tables and runs pending migrations).
-    let mut conn = Connection::open(&db_path)?;
+    // Try to open the DB; if opening fails (e.g. CannotOpen), attempt remediation once: run FS migration,
+    // create parent directories and try to touch the DB file, then retry.
+    let mut conn = match Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "⚠️  Failed to open DB at {:?}: {} -- attempting remediation",
+                db_path, e
+            );
+
+            // Diagnostic: print parent/exists/info to help debugging
+            let p = std::path::Path::new(&db_path);
+            if let Some(parent) = p.parent() {
+                eprintln!("   -> DB parent exists: {}", parent.exists());
+                if parent.exists() {
+                    match std::fs::metadata(parent) {
+                        Ok(md) => eprintln!(
+                            "      parent metadata: is_dir={} readonly={}",
+                            md.is_dir(),
+                            md.permissions().readonly()
+                        ),
+                        Err(me) => eprintln!("      parent metadata error: {}", me),
+                    }
+                }
+            }
+            eprintln!(
+                "   -> DB file exists: {}",
+                std::path::Path::new(&db_path).exists()
+            );
+
+            // Re-run filesystem migration (best-effort)
+            if let Err(e2) = rtimelogger::config::migrate::run_fs_migration() {
+                eprintln!("⚠️  Filesystem migration (retry) warning: {}", e2);
+            }
+            // Ensure parent dir exists
+            if let Some(parent) = std::path::Path::new(&db_path).parent()
+                && let Err(e3) = std::fs::create_dir_all(parent)
+            {
+                eprintln!(
+                    "❌ Failed to create parent directory for DB {:?}: {}",
+                    parent, e3
+                );
+            }
+            // Try to create (touch) the DB file so sqlite can open it
+            if let Err(e4) = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&db_path)
+            {
+                eprintln!("⚠️  Could not create DB file {:?}: {}", db_path, e4);
+            }
+
+            // Retry opening once
+            match Connection::open(&db_path) {
+                Ok(c2) => c2,
+                Err(e_final) => {
+                    eprintln!("❌ Final attempt to open DB failed: {}", e_final);
+                    // Extra diagnostic: list config dir contents
+                    if let Some(parent) = std::path::Path::new(&db_path).parent() {
+                        match std::fs::read_dir(parent) {
+                            Ok(rd) => {
+                                let names: Vec<String> = rd
+                                    .filter_map(|r| {
+                                        r.ok().and_then(|e| e.file_name().into_string().ok())
+                                    })
+                                    .collect();
+                                eprintln!("   -> Contents of {:?}: {:?}", parent, names);
+                            }
+                            Err(re) => {
+                                eprintln!("   -> Could not read parent dir {:?}: {}", parent, re)
+                            }
+                        }
+                    }
+                    return Err(e_final);
+                }
+            }
+        }
+    };
+
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     db::init_db(&conn)?;

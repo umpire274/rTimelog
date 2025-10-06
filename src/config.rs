@@ -4,6 +4,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+pub mod migrate; // use submodule at src/config/migrate.rs
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub database: String,
