@@ -11,11 +11,9 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in 0.4.5
+## What's new in 0.5.0
 
-- The project has been **renamed** from `rtimelog` to `rtimelogger`.
-- No new features or bug fixes have been introduced in this release.
-- All references in the crate name, repository links, documentation, and badges have been updated accordingly.
+- Moved CLI definition (`Cli` and `Commands`) from `main.rs` into a dedicated `cli.rs` module.
 
 ---
 
