@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 /// CLI application to track working hours with SQLite
 #[derive(Parser)]
 #[command(
-    name = "rtimelog",
+    name = "rtimelogger",
     version = env!("CARGO_PKG_VERSION"),
     about = "A simple time logging CLI in Rust: track working hours and calculate surplus using SQLite",
     long_about = None

@@ -24,7 +24,7 @@ fn main() -> rusqlite::Result<()> {
     } else if cli.test {
         // In test mode: use the default file name under the test config dir, but DO NOT call Config::load()
         Config::config_dir()
-            .join("rtimelog.sqlite")
+            .join("rtimelogger.sqlite")
             .to_string_lossy()
             .to_string()
     } else {

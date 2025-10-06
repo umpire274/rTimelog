@@ -32,21 +32,21 @@ impl Config {
     pub fn config_dir() -> PathBuf {
         if cfg!(target_os = "windows") {
             let appdata = env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(appdata).join("rtimelog")
+            PathBuf::from(appdata).join("rtimelogger")
         } else {
             let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".rtimelog")
+            PathBuf::from(home).join(".rtimelogger")
         }
     }
 
     /// Return the full path of the config file
     pub fn config_file() -> PathBuf {
-        Self::config_dir().join("rtimelog.conf")
+        Self::config_dir().join("rtimelogger.conf")
     }
 
     /// Return the full path of the SQLite database
     pub fn database_file() -> PathBuf {
-        Self::config_dir().join("rtimelog.sqlite")
+        Self::config_dir().join("rtimelogger.sqlite")
     }
 
     /// Load configuration from file, or return defaults if not found
@@ -82,7 +82,7 @@ impl Config {
                 dir.join(p)
             }
         } else {
-            dir.join("rtimelog.sqlite")
+            dir.join("rtimelogger.sqlite")
         };
 
         let config = Config {
