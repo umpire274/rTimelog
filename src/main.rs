@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
-use rtimelog::config::Config;
-use rtimelog::db;
+use rtimelogger::config::Config;
+use rtimelogger::db;
 use rusqlite::Connection;
 
 mod commands;

@@ -1,8 +1,9 @@
 # rTimelog
 
-[![Build Status](https://github.com/umpire274/rTimelog/actions/workflows/ci.yml/badge.svg)](https://github.com/umpire274/rTimelog/actions/workflows/ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/umpire274/rTimelog)](https://github.com/umpire274/rTimelog/releases)
-[![codecov](https://codecov.io/gh/umpire274/rTimelog/graph/badge.svg?token=5WPQF58D5Z)](https://codecov.io/gh/umpire274/rTimelog)
+[![Build Status](https://github.com/umpire274/rTimelogger/actions/workflows/ci.yml/badge.svg)](https://github.com/umpire274/rTimelogger/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/umpire274/rTimelogger)](https://github.com/umpire274/rTimelogger/releases)
+[![codecov](https://codecov.io/gh/umpire274/rTimelogger/graph/badge.svg?token=5WPQF58D5Z)](https://codecov.io/gh/umpire274/rTimelogger
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT))
 
 `rTimelog` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions, including
 working position, start and end times, and lunch breaks.  
@@ -10,23 +11,11 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in v0.4.2
+## What's new in 0.4.5
 
-**Delete-by-date/pair, mixed position and quality fixes**
-
-This release brings safer deletion primitives, a new mixed position flag and a number of internal cleanups:
-
-- New deletion mode:
-    - `del <date>` deletes all events and legacy `work_sessions` rows for the given date (interactive confirmation).
-    - `del --pair <pair> <date>` deletes only events belonging to the given pair for that date (interactive
-      confirmation). If no events remain for the date the legacy `work_sessions` row(s) are removed as well.
-- Database: introduced position value `M` (Mixed) to mark days with multiple positions and added a migration to extend
-  the CHECK constraints.
-- Code: extracted `create_missing_event` helper into `src/events.rs` (unit-tested) and removed duplicated logic from
-  `commands.rs`.
-- Tests: integration tests added/updated to cover deletion-by-date and deletion-by-pair behavior.
-- Lint: fixed a Clippy warning to allow `cargo clippy -D warnings` to pass.
-- `del` now records concise audit entries into the internal `log` table (visible with `rtimelog log --print`).
+- The project has been **renamed** from `rtimelog` to `rtimelogger`.
+- No new features or bug fixes have been introduced in this release.
+- All references in the crate name, repository links, documentation, and badges have been updated accordingly.
 
 ---
 
@@ -70,25 +59,25 @@ This release brings safer deletion primitives, a new mixed position flag and a n
 
 ## 📦 Installation
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/rtimelog.svg)](https://repology.org/project/rtimelog/versions)
+[![Packaging status](https://repology.org/badge/vertical-allrepos/rtimelogger.svg)](https://repology.org/project/rtimelogger/versions)
 
 ### 🐧 AUR (Arch Linux)
 
-[![AUR](https://img.shields.io/aur/version/rtimelog)](https://aur.archlinux.org/packages/rtimelog)
+[![AUR](https://img.shields.io/aur/version/rtimelogger)](https://aur.archlinux.org/packages/rtimelogger)
 
 ```bash
-yay -S rtimelog
+yay -S rtimelogger
 # or
-paru -S rtimelog
+paru -S rtimelogger
 ```
 
 ### 🍺 Homebrew (macOS/Linux)
 
-[![Homebrew Tap](https://img.shields.io/badge/homebrew-tap-brightgreen)](https://github.com/umpire274/homebrew-rtimelog)
+[![Homebrew Tap](https://img.shields.io/badge/homebrew-tap-brightgreen)](https://github.com/umpire274/homebrew-rtimelogger)
 
 ```bash
-brew tap umpire274/rtimelog
-brew install rtimelog
+brew tap umpire274/rtimelogger
+brew install rtimelogger
 ```
 
 ---

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 /// Create a unique test DB path inside the system temp dir
 fn setup_test_db(name: &str) -> String {
     let mut path: PathBuf = env::temp_dir();
-    path.push(format!("{}_rtimelog.sqlite", name));
+    path.push(format!("{}_rtimelogger.sqlite", name));
     let db_path = path.to_string_lossy().to_string();
     let _ = std::fs::remove_file(&db_path);
     db_path
@@ -17,14 +17,14 @@ fn test_update_does_not_create_new_pair() {
     let db_path = setup_test_db("update_pair");
 
     // Init DB
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "--test", "init"])
         .assert()
         .success();
 
     // Add initial full session -> produces exactly 2 events (in/out) with pair=1
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args([
             "--db",
@@ -40,7 +40,7 @@ fn test_update_does_not_create_new_pair() {
         .success();
 
     // Capture events JSON after initial insert
-    let initial_output = Command::cargo_bin("rtimelog")
+    let initial_output = Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "--test", "list", "--events", "--json"])
         .output()
@@ -68,7 +68,7 @@ fn test_update_does_not_create_new_pair() {
     let out_id = init_out["id"].as_i64().unwrap();
 
     // Update ONLY start time via explicit edit (pair 1)
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args([
             "--db",
@@ -85,7 +85,7 @@ fn test_update_does_not_create_new_pair() {
         .success();
 
     // Update ONLY end time via explicit edit (pair 1)
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args([
             "--db",
@@ -102,7 +102,7 @@ fn test_update_does_not_create_new_pair() {
         .success();
 
     // Update ONLY lunch via explicit edit (pair 1)
-    Command::cargo_bin("rtimelog")
+    Command::cargo_bin("rtimelogger")
         .unwrap()
         .args([
             "--db",
@@ -119,7 +119,7 @@ fn test_update_does_not_create_new_pair() {
         .success();
 
     // Re-capture events JSON after updates
-    let final_output = Command::cargo_bin("rtimelog")
+    let final_output = Command::cargo_bin("rtimelogger")
         .unwrap()
         .args(["--db", &db_path, "--test", "list", "--events", "--json"])
         .output()

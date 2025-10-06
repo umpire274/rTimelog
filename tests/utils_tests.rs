@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, NaiveDateTime};
-    use rtimelog::utils::{
+    use rtimelogger::utils::{
         date2iso, datetime2iso, describe_position, iso2date, iso2datetime, make_separator,
     };
 

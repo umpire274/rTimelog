@@ -1,9 +1,10 @@
 use crate::Cli;
 use crate::Commands;
 use chrono::NaiveTime;
-use rtimelog::config::Config;
-use rtimelog::utils::{describe_position, mins2hhmm, print_separator};
-use rtimelog::{db, logic, utils};
+use rtimelogger::config::Config;
+use rtimelogger::events::create_missing_event;
+use rtimelogger::utils::{describe_position, mins2hhmm, print_separator};
+use rtimelogger::{db, logic, utils};
 use rusqlite::Connection;
 use std::io::{Write, stdin};
 use std::process::Command;
@@ -317,7 +318,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Some(sv) = start.as_ref()
                 && in_event.is_none()
             {
-                in_event = rtimelog::events::create_missing_event(
+                in_event = create_missing_event(
                     conn,
                     date,
                     sv.as_str(),
@@ -332,7 +333,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             if let Some(ev_t) = end.as_ref()
                 && out_event.is_none()
             {
-                out_event = rtimelog::events::create_missing_event(
+                out_event = create_missing_event(
                     conn,
                     date,
                     ev_t.as_str(),

@@ -65,29 +65,29 @@ jobs:
         run: |
           mkdir -p release_artifacts/${{ matrix.target }}
           cd target/${{ matrix.target }}/release
-          mkdir -p rtimelog-${{ matrix.target }}
+          mkdir -p rtimelogger-${{ matrix.target }}
           
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            cp rtimelog.exe rtimelog-${{ matrix.target }}/
+            cp rtimelogger.exe rtimelogger-${{ matrix.target }}/
           else
-            cp rtimelog rtimelog-${{ matrix.target }}/
+            cp rtimelogger rtimelogger-${{ matrix.target }}/
           fi
           
-          cp $GITHUB_WORKSPACE/{README.md,LICENSE,CHANGELOG.md} rtimelog-${{ matrix.target }}/
+          cp $GITHUB_WORKSPACE/{README.md,LICENSE,CHANGELOG.md} rtimelogger-${{ matrix.target }}/
           
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            powershell -Command "Compress-Archive -Path rtimelog-${{ matrix.target }}\\* -DestinationPath rtimelog-${VERSION}-${{ matrix.target }}.zip"
-            cp rtimelog-${VERSION}-${{ matrix.target }}.zip $GITHUB_WORKSPACE/release_artifacts/${{ matrix.target }}/
+            powershell -Command "Compress-Archive -Path rtimelogger-${{ matrix.target }}\\* -DestinationPath rtimelogger-${VERSION}-${{ matrix.target }}.zip"
+            cp rtimelogger-${VERSION}-${{ matrix.target }}.zip $GITHUB_WORKSPACE/release_artifacts/${{ matrix.target }}/
           else
-            tar -czvf rtimelog-${VERSION}-${{ matrix.target }}.tar.gz rtimelog-${{ matrix.target }}
-            cp rtimelog-${VERSION}-${{ matrix.target }}.tar.gz $GITHUB_WORKSPACE/release_artifacts/${{ matrix.target }}/
+            tar -czvf rtimelogger-${VERSION}-${{ matrix.target }}.tar.gz rtimelogger-${{ matrix.target }}
+            cp rtimelogger-${VERSION}-${{ matrix.target }}.tar.gz $GITHUB_WORKSPACE/release_artifacts/${{ matrix.target }}/
           fi
       
       - name: Generate SHA256 checksum
         shell: bash
         run: |
           cd release_artifacts/${{ matrix.target }}
-          file="rtimelog-${VERSION}-${{ matrix.target }}.${{ matrix.ext }}"
+          file="rtimelogger-${VERSION}-${{ matrix.target }}.${{ matrix.ext }}"
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             pwsh -Command '
               $file = "'"$file"'"
@@ -102,7 +102,7 @@ jobs:
         shell: bash
         run: |
           cd release_artifacts/${{ matrix.target }}
-          file="rtimelog-${VERSION}-${{ matrix.target }}.${{ matrix.ext }}"
+          file="rtimelogger-${VERSION}-${{ matrix.target }}.${{ matrix.ext }}"
           echo "$GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
           
           echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
@@ -172,9 +172,9 @@ jobs:
           name: "v${{ steps.extract_version.outputs.version }}"
           body_path: CHANGELOG.md
           files: |
-            release_artifacts/rtimelog-*.tar.gz
-            release_artifacts/rtimelog-*.zip
-            release_artifacts/rtimelog-*.sig
-            release_artifacts/rtimelog-*.sha256
+            release_artifacts/rtimelogger-*.tar.gz
+            release_artifacts/rtimelogger-*.zip
+            release_artifacts/rtimelogger-*.sig
+            release_artifacts/rtimelogger-*.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
