@@ -1,11 +1,11 @@
 [package]
-name = "rtimelog"
-version = "0.4.2"
+name = "rtimelogger"
+version = "0.4.5"
 edition = "2024"
 authors = ["Umpire274 <umpire274@gmail.com>"]
 description = "A simple cross-platform CLI tool to track working hours, lunch breaks, and calculate surplus time"
-homepage = "https://github.com/umpire274/rTimelog"
-repository = "https://github.com/umpire274/rTimelog"
+homepage = "https://github.com/umpire274/rTimelogger"
+repository = "https://github.com/umpire274/rTimelogger"
 license = "MIT"
 readme = "README.md"
 keywords = ["timelog", "work-tracking", "cli", "productivity", "sqlite"]
