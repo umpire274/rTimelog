@@ -1,5 +1,5 @@
 [package]
-name = "r_timelog"
+name = "rtimelog"
 version = "0.4.2"
 edition = "2024"
 authors = ["Umpire274 <umpire274@gmail.com>"]
@@ -17,10 +17,6 @@ include = [
     "LICENSE",
     "CHANGELOG.md"
 ]
-
-[[bin]]
-name = "rtimelog"
-path = "src/main.rs"
 
 [dependencies]
 rusqlite = { version = "0.37.0", features = ["bundled"] }
