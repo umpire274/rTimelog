@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p release_artifacts/${{ matrix.target }}
           cd target/${{ matrix.target }}/release
-changed          mkdir -p rtimelogger-${{ matrix.target }}
+          mkdir -p rtimelogger-${{ matrix.target }}
           
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             cp rtimelogger.exe rtimelogger-${{ matrix.target }}/
