@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.5] - 2025-10-06
+
+### Changed
+- Project renamed from **`rtimelog`** to **`rtimelogger`**.
+- No functional changes: this release only updates the crate name, repository links, badges, and documentation references.
+
+---
+
 # [0.4.2] - 2025-10-03
 
 ### Added
