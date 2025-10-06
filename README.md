@@ -191,7 +191,7 @@ rtimelogger list --events --summary --json
 
 ### Sample output of summary mode
 
-```
+```text
 📊 Event pairs summary:
 Date        Pair  Pos  Start  End    Lunch  Dur
 ----------  ----  ---  -----  -----  -----  --------
@@ -282,7 +282,7 @@ Example output of `rtimelogger log --print`:
 
 ## 📊 Legacy session output example
 
-```
+```text
 📅 Saved sessions for September 2025:
   1: 2025-09-01 | Remote           | Start 09:08 | Lunch 00:30 | End 17:30 | Expected 17:14 | Surplus  +16 min
   2: 2025-09-04 | Office           | Start 09:35 | Lunch 00:30 | End 17:44 | Expected 17:41 | Surplus   +3 min
