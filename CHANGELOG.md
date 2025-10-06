@@ -1,10 +1,21 @@
 # Changelog
 
+## [0.4.6] - 2025-10-06
+
+### Changed
+
+- Moved CLI definition (`Cli` and `Commands`) from `main.rs` into a dedicated `cli.rs` module.
+  This improves project structure by keeping `main.rs` focused on the entrypoint logic.
+
+---
+
 ## [0.4.5] - 2025-10-06
 
 ### Changed
+
 - Project renamed from **`rtimelog`** to **`rtimelogger`**.
-- No functional changes: this release only updates the crate name, repository links, badges, and documentation references.
+- No functional changes: this release only updates the crate name, repository links, badges, and documentation
+  references.
 
 ---
 
@@ -13,22 +24,27 @@
 ### Added
 
 - `del` enhancements:
-  - `del <date>` removes all events and legacy work_session rows for the given date (with interactive confirmation).
-  - `del --pair <pair> <date>` removes only the events belonging to the specified pair for that date (with interactive confirmation); if no events remain for the date the legacy work_sessions row(s) are removed as well.
+    - `del <date>` removes all events and legacy work_session rows for the given date (with interactive confirmation).
+    - `del --pair <pair> <date>` removes only the events belonging to the specified pair for that date (with interactive
+      confirmation); if no events remain for the date the legacy work_sessions row(s) are removed as well.
 - Database helper functions to delete events by date/ids and sessions by date.
 - `del` now records concise audit entries into the internal `log` table (visible with `rtimelog log --print`).
 
 ### Changed
 
-- Introduced position value `M` (Mixed) to indicate days with multiple working positions; updated `describe_position` to display a friendly label for `M`.
-- Extracted `create_missing_event` into `src/events.rs` and added a unit test to improve testability and reduce duplicate code in `commands.rs`.
-- `list --events --summary` now displays Dur in a human-friendly "XH YYM" format; JSON output remains in minutes (`duration_minutes`).
+- Introduced position value `M` (Mixed) to indicate days with multiple working positions; updated `describe_position` to
+  display a friendly label for `M`.
+- Extracted `create_missing_event` into `src/events.rs` and added a unit test to improve testability and reduce
+  duplicate code in `commands.rs`.
+- `list --events --summary` now displays Dur in a human-friendly "XH YYM" format; JSON output remains in minutes (
+  `duration_minutes`).
 - Updated README to document the above behavior and examples.
 
 ### Fixed
 
 - Added a migration to extend position CHECKs to include `'M'` and to update existing tables where necessary.
-- Fixed a Clippy warning in `db::delete_events_by_ids` (removed an unnecessary map_identity) so `cargo clippy -D warnings` passes.
+- Fixed a Clippy warning in `db::delete_events_by_ids` (removed an unnecessary map_identity) so
+  `cargo clippy -D warnings` passes.
 - Updated integration tests to verify deletion-by-date and deletion-by-pair behavior.
 
 ---
@@ -42,9 +58,11 @@
 ### Changed
 
 - Refactored event helper logic:
-  - Extracted `create_missing_event` helper into a reusable function and moved it to `src/events.rs` for better testability and separation of concerns.
-  - Removed duplicated code in `commands.rs` and consolidated the helper usage.
-- Presentation improvement: in `list --events --summary` the Duration field is now displayed in a human-friendly "Xh Ym" format instead of raw minutes (display-only change).
+    - Extracted `create_missing_event` helper into a reusable function and moved it to `src/events.rs` for better
+      testability and separation of concerns.
+    - Removed duplicated code in `commands.rs` and consolidated the helper usage.
+- Presentation improvement: in `list --events --summary` the Duration field is now displayed in a human-friendly "Xh Ym"
+  format instead of raw minutes (display-only change).
 - Updated integration tests to cover the new event creation logic.
 
 ### Fixed
@@ -58,22 +76,27 @@
 ### Added
 
 - Event pair aggregation features:
-  - Derived **Pair** column when listing events (sequential pairing of `in` with next `out` per date, FIFO).
-  - `--pairs <id>` filter to show only events (or summaries) for a specific pair id (per date).
-  - `--summary` mode (only with `--events`) to display one aggregated row per pair (start, end, lunch, net duration, unmatched flag).
-  - Enriched JSON output (`--events --json` and `--events --summary --json`) including fields: `pair`, `unmatched`, `lunch_minutes`, `duration_minutes` (summary mode).
-- Unmatched event handling: lone `in` or `out` events are marked with an asterisk (`*`) after the pair id and `"unmatched": true` in JSON.
+    - Derived **Pair** column when listing events (sequential pairing of `in` with next `out` per date, FIFO).
+    - `--pairs <id>` filter to show only events (or summaries) for a specific pair id (per date).
+    - `--summary` mode (only with `--events`) to display one aggregated row per pair (start, end, lunch, net duration,
+      unmatched flag).
+    - Enriched JSON output (`--events --json` and `--events --summary --json`) including fields: `pair`, `unmatched`,
+      `lunch_minutes`, `duration_minutes` (summary mode).
+- Unmatched event handling: lone `in` or `out` events are marked with an asterisk (`*`) after the pair id and
+  `"unmatched": true` in JSON.
 - Case‑insensitive normalization for `--pos` filter when listing events/sessions (`r` / `R` behave the same).
-- Automatic dual-write: `add --in/--out` now (still) logs legacy session data and inserts punch events used by the new reporting features.
+- Automatic dual-write: `add --in/--out` now (still) logs legacy session data and inserts punch events used by the new
+  reporting features.
 - New integration tests covering:
-  - Pair calculation and filtering
-  - Summary (basic, filtered, JSON, unmatched)
-  - Enriched JSON schema
-  - Case-insensitive position filter for events
+    - Pair calculation and filtering
+    - Summary (basic, filtered, JSON, unmatched)
+    - Enriched JSON schema
+    - Case-insensitive position filter for events
 
 ### Changed
 
-- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`, summary/table printers).
+- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`, summary/table
+  printers).
 - Improved output alignment for event and summary tables.
 - Internal minor cleanups (pattern matching adjustments for 2024 edition, separator printing, warning removal).
 
@@ -93,13 +116,17 @@
 
 ### Added
 
-- New `log` subcommand with the `--print` option to display rows from the internal `log` table (date, function, message). Useful for diagnostics and auditing internal operations.
+- New `log` subcommand with the `--print` option to display rows from the internal `log` table (date, function,
+  message). Useful for diagnostics and auditing internal operations.
 - Application now records an entry into the internal `log` table on key user actions:
-  - `init`: logs when a database/config is initialized (message: "Database initialized at <path>" or "Test DB initialized at <path>").
-  - `add`: logs a concise summary of changes applied for the given date (message format: `date=YYYY-MM-DD | key=val, key=val, ...`, e.g. `date=2025-09-30 | start=09:00, lunch=30`).
-  - `del`: logs deletions (message: `Deleted session id <id>`).
+    - `init`: logs when a database/config is initialized (message: "Database initialized at <path>" or "Test DB
+      initialized at <path>").
+    - `add`: logs a concise summary of changes applied for the given date (message format:
+      `date=YYYY-MM-DD | key=val, key=val, ...`, e.g. `date=2025-09-30 | start=09:00, lunch=30`).
+    - `del`: logs deletions (message: `Deleted session id <id>`).
 
-These log entries include a timestamp (ISO 8601) generated at insertion time and are intended for troubleshooting and audit.
+These log entries include a timestamp (ISO 8601) generated at insertion time and are intended for troubleshooting and
+audit.
 
 ---
 
@@ -107,8 +134,11 @@ These log entries include a timestamp (ISO 8601) generated at insertion time and
 
 ### Added / Optimized
 
-- Performance: use cached prepared statements (`Connection::prepare_cached`) for repeated queries and upserts (`db::list_sessions`, `db::get_session`, `db::upsert_*`, `db::ttlog`) to reduce SQL compilation overhead and speed up repeated CLI invocations.
-- Migration to add new configuration parameter `separator_char` to the config file if missing; allows customizing the character used for month-end separators in list output.
+- Performance: use cached prepared statements (`Connection::prepare_cached`) for repeated queries and upserts (
+  `db::list_sessions`, `db::get_session`, `db::upsert_*`, `db::ttlog`) to reduce SQL compilation overhead and speed up
+  repeated CLI invocations.
+- Migration to add new configuration parameter `separator_char` to the config file if missing; allows customizing the
+  character used for month-end separators in list output.
 - Integration test `test_separator_after_month_end` validating that a separator is printed after the month's last day.
 
 ### Changed
@@ -118,7 +148,9 @@ These log entries include a timestamp (ISO 8601) generated at insertion time and
 
 ### Fixed
 
-- Fixed a bug in the configuration migration (`migrate_to_033_rel`) where a variable was referenced out of scope, causing a compilation error in some environments; the migration now correctly serializes the updated configuration and writes it back.
+- Fixed a bug in the configuration migration (`migrate_to_033_rel`) where a variable was referenced out of scope,
+  causing a compilation error in some environments; the migration now correctly serializes the updated configuration and
+  writes it back.
 
 ---
 
@@ -126,8 +158,10 @@ These log entries include a timestamp (ISO 8601) generated at insertion time and
 
 ### Added
 
-- Print the record inserted or updated when invoking the `add` command (the command now displays only the affected record).
-- Configuration files for GitHub Copilot: `copilot-custom.json` (machine-readable) and `copilot-custom.md` (human-readable documentation).
+- Print the record inserted or updated when invoking the `add` command (the command now displays only the affected
+  record).
+- Configuration files for GitHub Copilot: `copilot-custom.json` (machine-readable) and `copilot-custom.md` (
+  human-readable documentation).
 - Bump project version to `v0.3.4` and update dependencies as required.
 
 ### Changed
@@ -135,7 +169,6 @@ These log entries include a timestamp (ISO 8601) generated at insertion time and
 - Updated dependencies and version metadata for the `v0.3.4` release.
 
 ---
-
 
 # [0.3.3] - 2025-09-18
 
