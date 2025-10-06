@@ -1,7 +1,7 @@
 use chrono::{Duration, NaiveTime};
-use r_timelog::logic::month_name;
-use r_timelog::utils::mins2hhmm;
-use r_timelog::{logic, utils};
+use rtimelog::logic::month_name;
+use rtimelog::utils::mins2hhmm;
+use rtimelog::{logic, utils};
 
 #[test]
 fn test_expected_exit_with_min_lunch() {
