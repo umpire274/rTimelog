@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/umpire274/rTimelogger/actions/workflows/ci.yml/badge.svg)](https://github.com/umpire274/rTimelogger/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/umpire274/rTimelogger)](https://github.com/umpire274/rTimelogger/releases)
-[![codecov](https://codecov.io/gh/umpire274/rTimelogger/graph/badge.svg?token=5WPQF58D5Z)](https://codecov.io/gh/umpire274/rTimelogger
+[![codecov](https://codecov.io/gh/umpire274/rTimelogger/graph/badge.svg?token=41167c42-54af-4d6a-a9ba-8c2dbef4107d)](https://codecov.io/gh/umpire274/rTimelogger
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT))
 
 `rTimelog` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions, including
