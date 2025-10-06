@@ -29,6 +29,20 @@ fn default_separator_char() -> String {
     "-".to_string()
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        let db_path = Self::database_file();
+        Self {
+            database: db_path.to_string_lossy().to_string(),
+            default_position: "O".to_string(),
+            min_work_duration: "8h".to_string(),
+            min_duration_lunch_break: default_min_lunch(),
+            max_duration_lunch_break: default_max_lunch(),
+            separator_char: default_separator_char(),
+        }
+    }
+}
+
 impl Config {
     /// Return the standard configuration directory depending on the platform
     pub fn config_dir() -> PathBuf {

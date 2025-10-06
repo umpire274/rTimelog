@@ -643,7 +643,8 @@ pub fn handle_list(
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
                 if has_start && !has_end {
-                    let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+                    let expected =
+                        logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
                     let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
                     let lunch_str = if s.lunch > 0 {
                         mins2hhmm(s.lunch)
@@ -686,13 +687,18 @@ pub fn handle_list(
                     let effective_lunch =
                         logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char, config);
                     if crosses_lunch && effective_lunch > 0 {
-                        let expected =
-                            logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
+                        let expected = logic::calculate_expected_exit(
+                            &s.start,
+                            work_minutes,
+                            effective_lunch,
+                            config,
+                        );
                         let surplus = logic::calculate_surplus(
                             &s.start,
                             effective_lunch,
                             &s.end,
                             work_minutes,
+                            config,
                         );
                         let surplus_minutes = surplus.num_minutes();
                         total_surplus += surplus_minutes;
@@ -716,9 +722,14 @@ pub fn handle_list(
                         );
                     } else {
                         let expected =
-                            logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
-                        let surplus =
-                            logic::calculate_surplus(&s.start, s.lunch, &s.end, work_minutes);
+                            logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
+                        let surplus = logic::calculate_surplus(
+                            &s.start,
+                            s.lunch,
+                            &s.end,
+                            work_minutes,
+                            config,
+                        );
                         let surplus_minutes = surplus.num_minutes();
                         total_surplus += surplus_minutes;
                         let color_code = if surplus_minutes < 0 {
@@ -879,7 +890,7 @@ pub fn handle_list_with_highlight(
 
         if has_start && !has_end {
             // Only start → calculate expected end
-            let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+            let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
 
             let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
             let lunch_str = if s.lunch > 0 {
@@ -932,9 +943,14 @@ pub fn handle_list_with_highlight(
             if crosses_lunch && effective_lunch > 0 {
                 // Case with lunch (inserted or automatic)
                 let expected =
-                    logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
-                let surplus =
-                    logic::calculate_surplus(&s.start, effective_lunch, &s.end, work_minutes);
+                    logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch, config);
+                let surplus = logic::calculate_surplus(
+                    &s.start,
+                    effective_lunch,
+                    &s.end,
+                    work_minutes,
+                    config,
+                );
                 let surplus_minutes = surplus.num_minutes();
                 total_surplus += surplus_minutes;
 

@@ -33,22 +33,33 @@ pub fn iso2datetime(s: &str) -> Result<NaiveDateTime, ParseError> {
 }
 
 pub fn parse_work_duration_to_minutes(s: &str) -> i64 {
-    let mut hours = 0;
-    let mut minutes = 0;
+    // Accetta: "8h", "7h 36m", "7h36m", "  6h   15m ", "45m"
+    let cleaned = s.trim().to_lowercase();
+    let mut hours: i64 = 0;
+    let mut minutes: i64 = 0;
 
-    let parts: Vec<&str> = s.split_whitespace().collect();
-    for part in parts {
-        if part.ends_with('h') {
-            if let Ok(h) = part.trim_end_matches('h').parse::<i64>() {
+    // parsing senza regex: numero seguito da 'h' o 'm'
+    let mut num = String::new();
+    for ch in cleaned.chars() {
+        if ch.is_ascii_digit() {
+            num.push(ch);
+        } else if ch == 'h' {
+            if let Ok(h) = num.parse::<i64>() {
                 hours = h;
             }
-        } else if part.ends_with('m')
-            && let Ok(m) = part.trim_end_matches('m').parse::<i64>()
-        {
-            minutes = m;
+            num.clear();
+        } else if ch == 'm' {
+            if let Ok(m) = num.parse::<i64>() {
+                minutes = m;
+            }
+            num.clear();
+        } else {
+            // separatore: scarta numeri orfani
+            if !num.is_empty() {
+                num.clear();
+            }
         }
     }
-
     hours * 60 + minutes
 }
 
