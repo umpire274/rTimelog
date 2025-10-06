@@ -78,6 +78,14 @@ brew tap umpire274/rtimelogger
 brew install rtimelogger
 ```
 
+### 🦀 Crates.io (Rust)
+
+[![Crates.io](https://img.shields.io/crates/v/rtimelogger)](https://crates.io/crates/rtimelogger)
+
+```bash
+cargo install rtimelogger
+```
+
 ---
 
 ## ⚙️ Configuration
