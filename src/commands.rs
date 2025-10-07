@@ -3,7 +3,7 @@ use crate::Commands;
 use chrono::NaiveTime;
 use rtimelogger::config::Config;
 use rtimelogger::events::create_missing_event;
-use rtimelogger::utils::{describe_position, mins2hhmm, print_separator};
+use rtimelogger::utils::{describe_position, mins2hhmm, print_separator, weekday_str};
 use rtimelogger::{db, logic, utils};
 use rusqlite::Connection;
 use std::io::{Write, stdin};
@@ -667,6 +667,8 @@ pub fn handle_list(
                 let (pos_string, pos_color) = describe_position(s.position.as_str());
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
+                // Calculates the abbreviation of the weekday (default = middle → "Mon")
+                let wd = weekday_str(&s.date, 's');
                 if has_start && !has_end {
                     let expected =
                         logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
@@ -688,9 +690,10 @@ pub fn handle_list(
                         "-".to_string()
                     };
                     println!(
-                        "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                        "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                         s.id,
                         s.date,
+                        wd,
                         pos_color,
                         pos_string,
                         s.start,
@@ -733,9 +736,10 @@ pub fn handle_list(
                             "\x1b[32m"
                         };
                         println!(
-                            "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                            "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
                             s.id,
                             s.date,
+                            wd,
                             pos_color,
                             pos_string,
                             s.start,
@@ -763,9 +767,10 @@ pub fn handle_list(
                             "\x1b[32m"
                         };
                         println!(
-                            "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                            "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
                             s.id,
                             s.date,
+                            wd,
                             pos_color,
                             pos_string,
                             s.start,
@@ -781,8 +786,8 @@ pub fn handle_list(
                     }
                 } else {
                     println!(
-                        "{:>3}: {} | {}{:<16}\x1b[0m | -",
-                        s.id, s.date, pos_color, pos_string
+                        "{:>3}: {} ({}) | {}{:<16}\x1b[0m | -",
+                        s.id, s.date, wd, pos_color, pos_string
                     );
                 }
             }
@@ -912,6 +917,8 @@ pub fn handle_list_with_highlight(
         let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
+        // Calculates the abbreviation of the weekday (default = middle → "Mon")
+        let wd = weekday_str(&s.date, 's');
 
         if has_start && !has_end {
             // Only start → calculate expected end
@@ -938,9 +945,10 @@ pub fn handle_list_with_highlight(
             let end_fmt = format!("{:^5}", end_str);
 
             println!(
-                "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                 s.id,
                 s.date,
+                wd,
                 pos_color,
                 pos_string,
                 s.start,
@@ -1001,9 +1009,10 @@ pub fn handle_list_with_highlight(
                 let lunch_fmt = format!("{:^5}", lunch_str);
 
                 println!(
-                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
+                    "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                     s.id,
                     s.date,
+                    wd,
                     pos_color,
                     pos_string,
                     s.start,
@@ -1021,9 +1030,10 @@ pub fn handle_list_with_highlight(
                 let lunch_fmt = format!("{:^5}", "-".to_string());
 
                 println!(
-                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
+                    "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
                     s.id,
                     s.date,
+                    wd,
                     pos_color,
                     pos_string,
                     s.start,
@@ -1046,9 +1056,10 @@ pub fn handle_list_with_highlight(
             let lunch_fmt = format!("{:^5}", lunch_str);
 
             println!(
-                "{:>3}: {} | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
+                "{:>3}: {} ({}) | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
                 s.id,
                 s.date,
+                wd,
                 pos_color,
                 pos_string,
                 if has_start { &s.start } else { "-" },
