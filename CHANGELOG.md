@@ -1,11 +1,31 @@
 # Changelog
 
-## [0.5.0] - 2025-10-06
+## [0.5.0] - 2025-10-08
+
+### Added
+
+- New configuration option `show_weekday` to control weekday display in `list` command (`None`, `Short`, `Medium`,
+  `Long`).
+- Display weekday next to date in `list` command output.
+- New `backup` command with `--file` option to create a copy of the database.
+- Added `--compress` flag for backup:
+    - On Windows creates a `.zip` archive.
+    - On Linux/macOS creates a `.tar.gz` archive.
+- Backup operations are logged in the database via `ttlog`.
 
 ### Changed
 
 - Moved CLI definition (`Cli` and `Commands`) from `main.rs` into a dedicated `cli.rs` module.
   This improves project structure by keeping `main.rs` focused on the entrypoint logic.
+- Improved `del` command output: now shows a clear warning when no events or sessions are found for a date.
+- Updated tests to reflect new `del` command behavior.
+
+### Fixed
+
+- Corrected calculation of expected end time considering `min_duration_lunch_break` and `max_duration_lunch_break`.
+- Fixed insertion of lunch break duration in `events` table.
+- Fixed test alignment for delete of non-existent sessions.
+- Deduplicated migration code (removed repeated SQL blocks).
 
 ---
 

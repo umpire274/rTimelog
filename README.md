@@ -5,7 +5,8 @@
 [![codecov](https://codecov.io/gh/umpire274/rTimelogger/graph/badge.svg?token=41167c42-54af-4d6a-a9ba-8c2dbef4107d)](https://codecov.io/gh/umpire274/rTimelogger)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`rTimelogger` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions, including
+`rTimelogger` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions,
+including
 working position, start and end times, and lunch breaks.  
 The tool calculates the expected exit time and the surplus of worked minutes.
 
@@ -14,6 +15,15 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 ## What's new in 0.5.0
 
 - Moved CLI definition (`Cli` and `Commands`) from `main.rs` into a dedicated `cli.rs` module.
+- New configuration option `show_weekday` to control weekday display in `list` command (`None`, `Short`, `Medium`,
+  `Long`).
+- Weekday is now displayed next to session dates in `list` output.
+- New `backup` command with `--file` to copy the database.
+- Added `--compress` flag for backup:
+    - On Windows → produces `.zip`
+    - On Linux/macOS → produces `.tar.gz`
+- Backup operations are logged internally.
+- Corrected calculation of expected end time (lunch rules applied).
 
 ---
 
@@ -106,6 +116,7 @@ min_work_duration: 8h
 min_duration_lunch_break: 30
 max_duration_lunch_break: 90
 separator_char: "-"
+show_weekday: None   # Options: None | Short | Medium | Long
 ```
 
 Key fields:
@@ -115,6 +126,7 @@ Key fields:
 - **min_work_duration** → daily expected working time (e.g. `7h 36m`, `8h`)
 - **min_duration_lunch_break** / **max_duration_lunch_break** → lunch constraints (minutes)
 - **separator_char** → character used for month-end separator lines
+- **show_weekday** → controls weekday format in list output (`None`, `Short`, `Medium`, `Long`)
 
 > NOTE: Older docs referenced `working_time`; it has been unified as `min_work_duration`.
 
@@ -251,6 +263,18 @@ Example output of `rtimelogger log --print`:
   2: 2025-10-03T12:05:00Z | del        | Deleted date=2025-10-02 events=2 work_sessions=1
   3: 2025-10-03T12:06:00Z | auto_lunch | auto_lunch 30 min for out_event 12 (date=2025-10-02)
 ```
+
+### Backup database
+
+```bash
+# Simple copy
+rtimelogger backup --file "/path/to/backup.sqlite"
+
+# With compression
+rtimelogger backup --file "/path/to/backup.sqlite" --compress
+```
+- On Windows creates /path/to/backup.zip 
+- On Linux/macOS creates /path/to/backup.tar.gz
 
 ---
 
