@@ -1,4 +1,6 @@
-use chrono::{Datelike, NaiveDate, NaiveDateTime, ParseError};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, ParseError, Weekday};
+use std::io;
+use std::path::{Path, PathBuf};
 
 /// Convert a `NaiveDate` into an ISO 8601 string (YYYY-MM-DD)
 pub fn date2iso(date: &NaiveDate) -> String {
@@ -32,23 +34,78 @@ pub fn iso2datetime(s: &str) -> Result<NaiveDateTime, ParseError> {
     }
 }
 
+/// Returns the day of the week in various formats...
+/// - `type_wd = 's'` → short, es. "Mo"
+/// - `type_wd = 'm'` → medium, es. "Mon"
+/// - `type_wd = 'l'` → long, es. "Monday"
+pub fn weekday_str(date_str: &str, type_wd: char) -> String {
+    if let Ok(ndate) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let wd = ndate.weekday();
+        match type_wd {
+            's' => match wd {
+                Weekday::Mon => "Mo",
+                Weekday::Tue => "Tu",
+                Weekday::Wed => "We",
+                Weekday::Thu => "Th",
+                Weekday::Fri => "Fr",
+                Weekday::Sat => "Sa",
+                Weekday::Sun => "Su",
+            }
+            .to_string(),
+            'l' => match wd {
+                Weekday::Mon => "Monday",
+                Weekday::Tue => "Tuesday",
+                Weekday::Wed => "Wednesday",
+                Weekday::Thu => "Thursday",
+                Weekday::Fri => "Friday",
+                Weekday::Sat => "Saturday",
+                Weekday::Sun => "Sunday",
+            }
+            .to_string(),
+            // default → medium
+            _ => match wd {
+                Weekday::Mon => "Mon",
+                Weekday::Tue => "Tue",
+                Weekday::Wed => "Wed",
+                Weekday::Thu => "Thu",
+                Weekday::Fri => "Fri",
+                Weekday::Sat => "Sat",
+                Weekday::Sun => "Sun",
+            }
+            .to_string(),
+        }
+    } else {
+        String::new() // se la data non è valida, restituisce stringa vuota
+    }
+}
 pub fn parse_work_duration_to_minutes(s: &str) -> i64 {
-    let mut hours = 0;
-    let mut minutes = 0;
+    // Accetta: "8h", "7h 36m", "7h36m", "  6h   15m ", "45m"
+    let cleaned = s.trim().to_lowercase();
+    let mut hours: i64 = 0;
+    let mut minutes: i64 = 0;
 
-    let parts: Vec<&str> = s.split_whitespace().collect();
-    for part in parts {
-        if part.ends_with('h') {
-            if let Ok(h) = part.trim_end_matches('h').parse::<i64>() {
+    // parsing senza regex: numero seguito da 'h' o 'm'
+    let mut num = String::new();
+    for ch in cleaned.chars() {
+        if ch.is_ascii_digit() {
+            num.push(ch);
+        } else if ch == 'h' {
+            if let Ok(h) = num.parse::<i64>() {
                 hours = h;
             }
-        } else if part.ends_with('m')
-            && let Ok(m) = part.trim_end_matches('m').parse::<i64>()
-        {
-            minutes = m;
+            num.clear();
+        } else if ch == 'm' {
+            if let Ok(m) = num.parse::<i64>() {
+                minutes = m;
+            }
+            num.clear();
+        } else {
+            // separatore: scarta numeri orfani
+            if !num.is_empty() {
+                num.clear();
+            }
         }
     }
-
     hours * 60 + minutes
 }
 
@@ -129,4 +186,44 @@ pub fn is_last_day_of_month(date_str: &str) -> bool {
         }
         Err(_) => false,
     }
+}
+
+#[cfg(target_os = "windows")]
+pub fn compress_backup(dest: &Path) -> io::Result<PathBuf> {
+    use std::fs::File;
+    use zip::{CompressionMethod, ZipWriter, write::FileOptions};
+
+    let zip_path = dest.with_extension("zip");
+    let file = File::create(&zip_path)?;
+    let mut zip = ZipWriter::new(file);
+
+    let options: FileOptions<'_, ()> = FileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .unix_permissions(0o644);
+
+    let mut f = File::open(dest)?;
+    zip.start_file(dest.file_name().unwrap().to_string_lossy(), options)?;
+    std::io::copy(&mut f, &mut zip)?;
+    zip.finish()?;
+
+    println!("✅ Compressed backup: {}", zip_path.display());
+    Ok(zip_path)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub fn compress_backup(dest: &Path) -> io::Result<PathBuf> {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::fs::File;
+    use tar::Builder;
+
+    let tar_gz_path = dest.with_extension("tar.gz");
+    let tar_gz = File::create(&tar_gz_path)?;
+    let enc = GzEncoder::new(tar_gz, Compression::default());
+    let mut tar = Builder::new(enc);
+    tar.append_path_with_name(dest, dest.file_name().unwrap())?;
+    tar.finish()?;
+
+    println!("✅ Compressed backup: {}", tar_gz_path.display());
+    Ok(tar_gz_path)
 }

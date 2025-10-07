@@ -3,11 +3,15 @@ use crate::Commands;
 use chrono::NaiveTime;
 use rtimelogger::config::Config;
 use rtimelogger::events::create_missing_event;
-use rtimelogger::utils::{describe_position, mins2hhmm, print_separator};
+use rtimelogger::utils::{
+    compress_backup, describe_position, mins2hhmm, print_separator, weekday_str,
+};
 use rtimelogger::{db, logic, utils};
 use rusqlite::Connection;
 use std::io::{Write, stdin};
+use std::path::Path;
 use std::process::Command;
+use std::{fs, io};
 
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
     if let Commands::Conf {
@@ -98,6 +102,7 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
         if let Err(e) = db::ttlog(
             &conn,
             "init",
+            "New DB test",
             &format!("Test DB initialized at {}", db_path),
         ) {
             eprintln!("⚠️ Failed to write internal log: {}", e);
@@ -111,6 +116,7 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
         if let Err(e) = db::ttlog(
             &conn,
             "init",
+            "New prod DB",
             &format!("Database initialized at {}", db_path),
         ) {
             eprintln!("⚠️ Failed to write internal log: {}", e);
@@ -122,6 +128,8 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
 
 pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()> {
     if let Commands::Del { pair, date } = cmd {
+        let date = date.trim();
+
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
             eprintln!(
@@ -155,7 +163,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                 "Are you sure to delete the pair {} of the date {} (N/y) ? ",
                 pair_id, date
             );
-            let _ = std::io::stdout().flush();
+            let _ = io::stdout().flush();
             let mut input = String::new();
             stdin().read_line(&mut input).unwrap_or(0);
             let choice = input.trim().to_lowercase();
@@ -173,18 +181,28 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                     let _ = db::ttlog(
                         conn,
                         "del",
+                        "Delete pair events on date",
                         &format!("Deleted {} events for date={} pair={}", rows, date, pair_id),
                     );
                 }
                 Err(e) => eprintln!("❌ Error deleting pair events: {}", e),
             }
         } else {
+            // Cancella TUTTA la giornata
+            let ev_n = db::count_events_by_date(conn, date).unwrap_or(0);
+            let ws_n = db::count_sessions_by_date(conn, date).unwrap_or(0);
+
+            if ev_n == 0 && ws_n == 0 {
+                println!("⚠️  No events or work_sessions found for date {}", date);
+                return Ok(());
+            }
+
             // Delete all records for the date (work_sessions + events)
             print!(
                 "Are you sure to delete the records of the date {} (N/y) ? ",
                 date
             );
-            let _ = std::io::stdout().flush();
+            let _ = io::stdout().flush();
             let mut input = String::new();
             stdin().read_line(&mut input).unwrap_or(0);
             let choice = input.trim().to_lowercase();
@@ -203,6 +221,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                         let _ = db::ttlog(
                             conn,
                             "del",
+                            "Delete all events and sessions for date",
                             &format!(
                                 "Deleted date={} events={} work_sessions={}",
                                 date, ev_rows, ws_rows
@@ -417,6 +436,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             } else if let Err(e) = db::ttlog(
                 conn,
                 "edit",
+                "Edit existing pair events",
                 &format!("date={} pair={} | {}", date, pair_id, changes.join(", ")),
             ) {
                 eprintln!("\u{26a0}\u{FE0F} Failed to log edit: {}", e);
@@ -428,6 +448,9 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         // --------------------------------------------------
         // NORMAL MODE (always create / upsert fields, never implicit edit of existing pair)
         // --------------------------------------------------
+
+        // Applica modifiche sugli eventi esistenti
+        let mut changes: Vec<String> = Vec::new();
 
         // Handle position
         if let Some(p) = pos.as_ref() {
@@ -442,6 +465,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             let _ = db::upsert_position(conn, date, &ptrim);
             let (pos_string, _) = describe_position(&ptrim);
             println!("\u{2705} Position {} set for {}", pos_string, date);
+            changes.push(format!("position={}", p));
         }
 
         // Handle start time
@@ -452,6 +476,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
             db::upsert_start(conn, date, sv.as_str())?;
             println!("\u{2705} Start time {} registered for {}", sv, date);
+            changes.push(format!("start={}", sv));
+
             // event in
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
             let args = db::AddEventArgs {
@@ -482,6 +508,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
             db::upsert_lunch(conn, date, l)?;
             println!("\u{2705} Lunch {} min registered for {}", l, date);
+            changes.push(format!("lunch={}", l));
+
             // Also, if there is an out event present, set its lunch_break for compatibility
             match db::last_out_before(conn, date, "23:59") {
                 Ok(Some(out_ev)) => {
@@ -510,6 +538,8 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             }
             db::upsert_end(conn, date, ev_t.as_str())?;
             println!("\u{2705} End time {} registered for {}", ev_t, date);
+            changes.push(format!("end={}", ev_t));
+
             let event_pos_owned: Option<String> = pos.as_ref().map(|p| p.trim().to_uppercase());
             let args = db::AddEventArgs {
                 date,
@@ -519,9 +549,23 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 source: "cli",
                 meta: None,
             };
-            if let Err(err) = db::add_event(conn, &args, config) {
-                eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
+            match db::add_event(conn, &args, config) {
+                Ok(event_id) => {
+                    if let Some(l) = lunch
+                        && l > 0
+                        && let Err(e) = db::set_event_lunch(conn, event_id as i32, l)
+                    {
+                        eprintln!(
+                            "\u{26a0}\u{FE0F} Failed to set lunch on out event {}: {}",
+                            event_id, e
+                        );
+                    }
+                }
+                Err(err) => {
+                    eprintln!("\u{26a0}\u{FE0F} Failed to insert event (out): {}", err);
+                }
             }
+
             // Recompute aggregate position after inserting out event
             if let Ok(Some(agg)) = db::aggregate_position_from_events(conn, date) {
                 let _ = db::force_set_position(conn, date, &agg);
@@ -534,12 +578,21 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             );
         }
 
+        // Log the add operation if we recorded changes
+        if !changes.is_empty() {
+            let msg = format!("date={} | {}", date, changes.join(", "));
+            if let Err(e) = db::ttlog(conn, "add", "Add record on events", &msg) {
+                eprintln!("⚠️ Failed to write internal log: {}", e);
+            }
+        }
+
         // If the user provided only --pos (no events), keep existing behavior; otherwise aggregate handled above.
         // Recupera l'id dell'ultima sessione per la data fornita e stampa
         match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
         {
             Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
                 Ok(last_id) => {
+                    println!();
                     let _ = handle_list_with_highlight(None, None, conn, config, Some(last_id));
                 }
                 Err(rusqlite::Error::QueryReturnedNoRows) => {}
@@ -573,6 +626,13 @@ pub fn handle_list(
     if args.now {
         // Get today's date in YYYY-MM-DD
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        let wd_type = match config.show_weekday.as_str() {
+            "Short" => 's',
+            "Long" => 'l',
+            "None" => '\0',
+            _ => 'm', // Medium default
+        };
 
         // If user supplied --now --events but not --details, map to details for convenience
         if args.events && !args.details {
@@ -624,8 +684,17 @@ pub fn handle_list(
                 let (pos_string, pos_color) = describe_position(s.position.as_str());
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
+
+                // Calculates the abbreviation of the weekday (default = medium → "Mon")
+                let date_shown = if wd_type == '\0' {
+                    s.date.clone()
+                } else {
+                    format!("{} ({})", s.date, weekday_str(&s.date, wd_type))
+                };
+
                 if has_start && !has_end {
-                    let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+                    let expected =
+                        logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
                     let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
                     let lunch_str = if s.lunch > 0 {
                         mins2hhmm(s.lunch)
@@ -646,7 +715,7 @@ pub fn handle_list(
                     println!(
                         "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                         s.id,
-                        s.date,
+                        date_shown,
                         pos_color,
                         pos_string,
                         s.start,
@@ -668,13 +737,18 @@ pub fn handle_list(
                     let effective_lunch =
                         logic::effective_lunch_minutes(s.lunch, &s.start, &s.end, pos_char, config);
                     if crosses_lunch && effective_lunch > 0 {
-                        let expected =
-                            logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
+                        let expected = logic::calculate_expected_exit(
+                            &s.start,
+                            work_minutes,
+                            effective_lunch,
+                            config,
+                        );
                         let surplus = logic::calculate_surplus(
                             &s.start,
                             effective_lunch,
                             &s.end,
                             work_minutes,
+                            config,
                         );
                         let surplus_minutes = surplus.num_minutes();
                         total_surplus += surplus_minutes;
@@ -686,7 +760,7 @@ pub fn handle_list(
                         println!(
                             "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
                             s.id,
-                            s.date,
+                            date_shown,
                             pos_color,
                             pos_string,
                             s.start,
@@ -698,9 +772,14 @@ pub fn handle_list(
                         );
                     } else {
                         let expected =
-                            logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
-                        let surplus =
-                            logic::calculate_surplus(&s.start, s.lunch, &s.end, work_minutes);
+                            logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
+                        let surplus = logic::calculate_surplus(
+                            &s.start,
+                            s.lunch,
+                            &s.end,
+                            work_minutes,
+                            config,
+                        );
                         let surplus_minutes = surplus.num_minutes();
                         total_surplus += surplus_minutes;
                         let color_code = if surplus_minutes < 0 {
@@ -711,7 +790,7 @@ pub fn handle_list(
                         println!(
                             "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
                             s.id,
-                            s.date,
+                            date_shown,
                             pos_color,
                             pos_string,
                             s.start,
@@ -728,7 +807,7 @@ pub fn handle_list(
                 } else {
                     println!(
                         "{:>3}: {} | {}{:<16}\x1b[0m | -",
-                        s.id, s.date, pos_color, pos_string
+                        s.id, date_shown, pos_color, pos_string
                     );
                 }
             }
@@ -804,6 +883,13 @@ pub fn handle_list_with_highlight(
     // Normalize pos to uppercase
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
 
+    let wd_type = match config.show_weekday.as_str() {
+        "Short" => 's',
+        "Long" => 'l',
+        "None" => '\0',
+        _ => 'm', // Medium default
+    };
+
     // If highlight_id is Some(id) -> retrieve only that session (efficient single-row query).
     // Otherwise, retrieve the full list based on filters.
     let sessions = if let Some(id) = highlight_id {
@@ -859,9 +945,16 @@ pub fn handle_list_with_highlight(
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
 
+        // Calculates the abbreviation of the weekday (default = medium → "Mon")
+        let date_shown = if wd_type == '\0' {
+            s.date.clone()
+        } else {
+            format!("{} ({})", s.date, weekday_str(&s.date, wd_type))
+        };
+
         if has_start && !has_end {
             // Only start → calculate expected end
-            let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch);
+            let expected = logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
 
             let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
             let lunch_str = if s.lunch > 0 {
@@ -886,7 +979,7 @@ pub fn handle_list_with_highlight(
             println!(
                 "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                 s.id,
-                s.date,
+                date_shown,
                 pos_color,
                 pos_string,
                 s.start,
@@ -914,9 +1007,14 @@ pub fn handle_list_with_highlight(
             if crosses_lunch && effective_lunch > 0 {
                 // Case with lunch (inserted or automatic)
                 let expected =
-                    logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch);
-                let surplus =
-                    logic::calculate_surplus(&s.start, effective_lunch, &s.end, work_minutes);
+                    logic::calculate_expected_exit(&s.start, work_minutes, effective_lunch, config);
+                let surplus = logic::calculate_surplus(
+                    &s.start,
+                    effective_lunch,
+                    &s.end,
+                    work_minutes,
+                    config,
+                );
                 let surplus_minutes = surplus.num_minutes();
                 total_surplus += surplus_minutes;
 
@@ -944,7 +1042,7 @@ pub fn handle_list_with_highlight(
                 println!(
                     "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                     s.id,
-                    s.date,
+                    date_shown,
                     pos_color,
                     pos_string,
                     s.start,
@@ -964,7 +1062,7 @@ pub fn handle_list_with_highlight(
                 println!(
                     "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
                     s.id,
-                    s.date,
+                    date_shown,
                     pos_color,
                     pos_string,
                     s.start,
@@ -989,7 +1087,7 @@ pub fn handle_list_with_highlight(
             println!(
                 "{:>3}: {} | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
                 s.id,
-                s.date,
+                date_shown,
                 pos_color,
                 pos_string,
                 if has_start { &s.start } else { "-" },
@@ -1035,23 +1133,71 @@ pub fn handle_list_with_highlight(
 /// Print rows from the internal `log` table when requested
 pub fn handle_log(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
     if matches!(cmd, Commands::Log { print: true }) {
-        let mut stmt =
-            conn.prepare_cached("SELECT id, date, function, message FROM log ORDER BY id ASC")?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, date, operation, target, message FROM log ORDER BY id ASC",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i32>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })?;
 
         println!("📜 Internal log:");
         for r in rows {
-            let (id, date, function, message) = r?;
-            println!("{:>3}: {} | {} | {}", id, date, function, message);
+            let (id, date, operation, target, message) = r?;
+            if target.is_empty() {
+                println!("{:>3}: {} | {} | {}", id, date, operation, message);
+            } else {
+                println!(
+                    "{:>3}: {} | {} ({}) | {}",
+                    id, date, operation, target, message
+                );
+            }
         }
     }
+    Ok(())
+}
+
+pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result<()> {
+    let src = Path::new(&config.database);
+    let dest = Path::new(file);
+
+    if !src.exists() {
+        eprintln!("❌ Source database not found at {:?}", src);
+        return Ok(());
+    }
+
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::copy(src, dest)?;
+    println!("✅ Backup created: {}", dest.display());
+
+    // Se compress è attivo → ottieni il nome del file compresso
+    let final_path = if *compress {
+        compress_backup(dest)?
+    } else {
+        dest.to_path_buf()
+    };
+
+    if let Ok(conn) = Connection::open(src) {
+        let _ = db::ttlog(
+            &conn,
+            "backup",
+            &final_path.to_string_lossy(),
+            if *compress {
+                "Database backup created and compressed"
+            } else {
+                "Database backup created"
+            },
+        );
+    }
+
     Ok(())
 }
 

@@ -1,21 +1,29 @@
-# rTimelog
+# rTimelogger
 
 [![Build Status](https://github.com/umpire274/rTimelogger/actions/workflows/ci.yml/badge.svg)](https://github.com/umpire274/rTimelogger/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/umpire274/rTimelogger)](https://github.com/umpire274/rTimelogger/releases)
 [![codecov](https://codecov.io/gh/umpire274/rTimelogger/graph/badge.svg?token=41167c42-54af-4d6a-a9ba-8c2dbef4107d)](https://codecov.io/gh/umpire274/rTimelogger)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`rTimelog` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions, including
+`rTimelogger` is a simple, cross-platform **command-line tool** written in Rust to track daily working sessions,
+including
 working position, start and end times, and lunch breaks.  
 The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in 0.4.5
+## What's new in 0.5.0
 
-- The project has been **renamed** from `rtimelog` to `rtimelogger`.
-- No new features or bug fixes have been introduced in this release.
-- All references in the crate name, repository links, documentation, and badges have been updated accordingly.
+- Moved CLI definition (`Cli` and `Commands`) from `main.rs` into a dedicated `cli.rs` module.
+- New configuration option `show_weekday` to control weekday display in `list` command (`None`, `Short`, `Medium`,
+  `Long`).
+- Weekday is now displayed next to session dates in `list` output.
+- New `backup` command with `--file` to copy the database.
+- Added `--compress` flag for backup:
+    - On Windows → produces `.zip`
+    - On Linux/macOS → produces `.tar.gz`
+- Backup operations are logged internally.
+- Corrected calculation of expected end time (lunch rules applied).
 
 ---
 
@@ -52,8 +60,8 @@ The tool calculates the expected exit time and the surplus of worked minutes.
   pair id.
 - Automatic database migration for schema changes
 - Cross-platform configuration file management:
-    - Linux/macOS: `$HOME/.rtimelog/rtimelog.conf`
-    - Windows: `%APPDATA%\rtimelog\rtimelog.conf`
+    - Linux/macOS: `$HOME/.rtimelogger/rtimelogger.conf`
+    - Windows: `%APPDATA%\rtimelogger\rtimelogger.conf`
 
 ---
 
@@ -80,6 +88,14 @@ brew tap umpire274/rtimelogger
 brew install rtimelogger
 ```
 
+### 🦀 Crates.io (Rust)
+
+[![Crates.io](https://img.shields.io/crates/v/rtimelogger)](https://crates.io/crates/rtimelogger)
+
+```bash
+cargo install rtimelogger
+```
+
 ---
 
 ## ⚙️ Configuration
@@ -87,19 +103,20 @@ brew install rtimelogger
 When you run:
 
 ```bash
-rtimelog init
+rtimelogger init
 ```
 
-a configuration file is created in the user’s config directory (`rtimelog.conf`).  
+a configuration file is created in the user’s config directory (`rtimelogger.conf`).  
 It includes for current releases (≥ 0.4.0):
 
 ```yaml
-database: /home/user/.rtimelog/rtimelog.sqlite
+database: /home/user/.rtimelogger/rtimelogger.sqlite
 default_position: O
 min_work_duration: 8h
 min_duration_lunch_break: 30
 max_duration_lunch_break: 90
 separator_char: "-"
+show_weekday: None   # Options: None | Short | Medium | Long
 ```
 
 Key fields:
@@ -109,13 +126,14 @@ Key fields:
 - **min_work_duration** → daily expected working time (e.g. `7h 36m`, `8h`)
 - **min_duration_lunch_break** / **max_duration_lunch_break** → lunch constraints (minutes)
 - **separator_char** → character used for month-end separator lines
+- **show_weekday** → controls weekday format in list output (`None`, `Short`, `Medium`, `Long`)
 
 > NOTE: Older docs referenced `working_time`; it has been unified as `min_work_duration`.
 
 Override DB path at runtime:
 
 ```bash
-rtimelog --db /custom/path/mydb.sqlite <command>
+rtimelogger --db /custom/path/mydb.sqlite <command>
 ```
 
 ---
@@ -125,25 +143,25 @@ rtimelog --db /custom/path/mydb.sqlite <command>
 ### Initialize DB and config
 
 ```bash
-rtimelog init
+rtimelogger init
 ```
 
 Custom DB file relative to config dir:
 
 ```bash
-rtimelog --db mydb.sqlite init
+rtimelogger --db mydb.sqlite init
 ```
 
 Absolute path:
 
 ```bash
-rtimelog --db "G:/My Drive/Work/Timelog/rtimelog.sqlite" init
+rtimelogger --db "G:/My Drive/Work/Timelog/rtimelogger.sqlite" init
 ```
 
 ### Add a full work session
 
 ```bash
-rtimelog add 2025-09-13 O 09:00 60 17:30
+rtimelogger add 2025-09-13 O 09:00 60 17:30
 ```
 
 Creates or updates the legacy session AND adds two events (in/out) for reporting.
@@ -151,47 +169,47 @@ Creates or updates the legacy session AND adds two events (in/out) for reporting
 ### Partial updates (each creates/updates events when relevant)
 
 ```bash
-rtimelog add 2025-09-13 --pos R
-rtimelog add 2025-09-13 --in 09:00
-rtimelog add 2025-09-13 --lunch 45
-rtimelog add 2025-09-13 --out 17:30
+rtimelogger add 2025-09-13 --pos R
+rtimelogger add 2025-09-13 --in 09:00
+rtimelogger add 2025-09-13 --lunch 45
+rtimelogger add 2025-09-13 --out 17:30
 ```
 
 ### Add holiday
 
 ```bash
-rtimelog add 2025-09-14 --pos H
+rtimelogger add 2025-09-14 --pos H
 ```
 
 ### List sessions (legacy view)
 
 ```bash
-rtimelog list                # all
-rtimelog list --period 2025  # year
-rtimelog list --period 2025-09  # year-month
-rtimelog list --pos o        # position (case-insensitive)
+rtimelogger list                # all
+rtimelogger list --period 2025  # year
+rtimelogger list --period 2025-09  # year-month
+rtimelogger list --pos o        # position (case-insensitive)
 ```
 
 ### List raw events
 
 ```bash
-rtimelog list --events
-rtimelog list --events --pos r          # filter by position
-rtimelog list --events --pairs 2        # only pair 2 (per date)
-rtimelog list --events --json           # raw JSON with pair & unmatched
+rtimelogger list --events
+rtimelogger list --events --pos r          # filter by position
+rtimelogger list --events --pairs 2        # only pair 2 (per date)
+rtimelogger list --events --json           # raw JSON with pair & unmatched
 ```
 
 ### Summarize events per pair
 
 ```bash
-rtimelog list --events --summary
-rtimelog list --events --summary --pairs 1
-rtimelog list --events --summary --json
+rtimelogger list --events --summary
+rtimelogger list --events --summary --pairs 1
+rtimelogger list --events --summary --json
 ```
 
 ### Sample output of summary mode
 
-```
+```text
 📊 Event pairs summary:
 Date        Pair  Pos  Start  End    Lunch  Dur
 ----------  ----  ---  -----  -----  -----  --------
@@ -205,13 +223,13 @@ Date        Pair  Pos  Start  End    Lunch  Dur
 
 ```bash
 # Delete all records for a date (confirmation required)
-rtimelog del 2025-10-02
+rtimelogger del 2025-10-02
 ```
 
 Example (interactive):
 
 ```bash
-$ rtimelog del 2025-10-02
+$ rtimelogger del 2025-10-02
 Are you sure to delete the records of the date 2025-10-02 (N/y) ? y
 🗑️  Deleted 2 event(s) and 1 work_session(s) for date 2025-10-02
 ```
@@ -220,13 +238,13 @@ Are you sure to delete the records of the date 2025-10-02 (N/y) ? y
 
 ```bash
 # Delete only pair 1 for a specific date (confirmation required)
-rtimelog del --pair 1 2025-10-02
+rtimelogger del --pair 1 2025-10-02
 ```
 
 Example (interactive):
 
 ```bash
-$ rtimelog del --pair 1 2025-10-02
+$ rtimelogger del --pair 1 2025-10-02
 Are you sure to delete the pair 1 of the date 2025-10-02 (N/y) ? y
 🗑️  Deleted 1 event(s) for pair 1 on 2025-10-02
 ```
@@ -234,17 +252,29 @@ Are you sure to delete the pair 1 of the date 2025-10-02 (N/y) ? y
 ### Internal log
 
 ```bash
-rtimelog log --print
+rtimelogger log --print
 ```
 
-Example output of `rtimelog log --print`:
+Example output of `rtimelogger log --print`:
 
 ```bash
 📜 Internal log:
-  1: 2025-10-03T12:00:00Z | init       | Database initialized at C:\Users\you\AppData\Roaming\rtimelog\rtimelog.sqlite
+  1: 2025-10-03T12:00:00Z | init       | Database initialized at C:\Users\you\AppData\Roaming\rtimelogger\rtimelogger.sqlite
   2: 2025-10-03T12:05:00Z | del        | Deleted date=2025-10-02 events=2 work_sessions=1
   3: 2025-10-03T12:06:00Z | auto_lunch | auto_lunch 30 min for out_event 12 (date=2025-10-02)
 ```
+
+### Backup database
+
+```bash
+# Simple copy
+rtimelogger backup --file "/path/to/backup.sqlite"
+
+# With compression
+rtimelogger backup --file "/path/to/backup.sqlite" --compress
+```
+- On Windows creates /path/to/backup.zip 
+- On Linux/macOS creates /path/to/backup.tar.gz
 
 ---
 
@@ -282,7 +312,7 @@ Example output of `rtimelog log --print`:
 
 ## 📊 Legacy session output example
 
-```
+```text
 📅 Saved sessions for September 2025:
   1: 2025-09-01 | Remote           | Start 09:08 | Lunch 00:30 | End 17:30 | Expected 17:14 | Surplus  +16 min
   2: 2025-09-04 | Office           | Start 09:35 | Lunch 00:30 | End 17:44 | Expected 17:41 | Surplus   +3 min
@@ -317,8 +347,8 @@ Include coverage for: sessions CRUD, events pairing, summary, JSON, holidays, mi
 ## 📦 Installation
 
 ```bash
-git clone https://github.com/umpire274/rTimelog.git
-cd rTimelog
+git clone https://github.com/umpire274/rTimelogger.git
+cd rTimelogger
 cargo build --release
 ```
 
@@ -335,7 +365,7 @@ MIT License – see [LICENSE](LICENSE).
 ### Internal Log Recap
 
 ```bash
-rtimelog log --print
+rtimelogger log --print
 ```
 
 Records concise audit lines for `init`, `add`, `del` and auto-lunch adjustments.

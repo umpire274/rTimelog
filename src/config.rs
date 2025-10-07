@@ -4,6 +4,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+pub mod migrate; // use submodule at src/config/migrate.rs
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub database: String,
@@ -15,6 +17,7 @@ pub struct Config {
     pub max_duration_lunch_break: i32,
     #[serde(default = "default_separator_char")]
     pub separator_char: String,
+    pub show_weekday: String,
 }
 
 fn default_min_lunch() -> i32 {
@@ -27,26 +30,41 @@ fn default_separator_char() -> String {
     "-".to_string()
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        let db_path = Self::database_file();
+        Self {
+            database: db_path.to_string_lossy().to_string(),
+            default_position: "O".to_string(),
+            min_work_duration: "8h".to_string(),
+            min_duration_lunch_break: default_min_lunch(),
+            max_duration_lunch_break: default_max_lunch(),
+            separator_char: default_separator_char(),
+            show_weekday: "None".to_string(),
+        }
+    }
+}
+
 impl Config {
     /// Return the standard configuration directory depending on the platform
     pub fn config_dir() -> PathBuf {
         if cfg!(target_os = "windows") {
             let appdata = env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(appdata).join("rtimelog")
+            PathBuf::from(appdata).join("rtimelogger")
         } else {
             let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            PathBuf::from(home).join(".rtimelog")
+            PathBuf::from(home).join(".rtimelogger")
         }
     }
 
     /// Return the full path of the config file
     pub fn config_file() -> PathBuf {
-        Self::config_dir().join("rtimelog.conf")
+        Self::config_dir().join("rtimelogger.conf")
     }
 
     /// Return the full path of the SQLite database
     pub fn database_file() -> PathBuf {
-        Self::config_dir().join("rtimelog.sqlite")
+        Self::config_dir().join("rtimelogger.sqlite")
     }
 
     /// Load configuration from file, or return defaults if not found
@@ -64,6 +82,7 @@ impl Config {
                 min_duration_lunch_break: 30,
                 max_duration_lunch_break: 90,
                 separator_char: default_separator_char(),
+                show_weekday: "None".to_string(),
             }
         }
     }
@@ -82,7 +101,7 @@ impl Config {
                 dir.join(p)
             }
         } else {
-            dir.join("rtimelog.sqlite")
+            dir.join("rtimelogger.sqlite")
         };
 
         let config = Config {
@@ -92,6 +111,7 @@ impl Config {
             min_duration_lunch_break: 30,
             max_duration_lunch_break: 90,
             separator_char: default_separator_char(),
+            show_weekday: "None".to_string(),
         };
 
         // Write config file

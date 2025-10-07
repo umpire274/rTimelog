@@ -1,14 +1,29 @@
 use chrono::{Duration, NaiveTime};
-use rtimelogger::logic::month_name;
+use rtimelogger::config::Config;
+use rtimelogger::logic::{calculate_expected_exit, calculate_surplus, month_name};
+use rtimelogger::utils;
 use rtimelogger::utils::mins2hhmm;
-use rtimelogger::{logic, utils};
+
+#[test]
+fn test_expected_exit_basic() {
+    let config = Config::default();
+
+    let start = "08:15";
+    let work_minutes = 456; // 7h36m
+    let lunch = 30; // minimo
+
+    let expected = calculate_expected_exit(start, work_minutes, lunch, &config);
+    assert_eq!(expected.format("%H:%M").to_string(), "16:21"); // esempio
+}
 
 #[test]
 fn test_expected_exit_with_min_lunch() {
+    let config = Config::default();
+
     let start = "09:00";
     let lunch = 30;
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
+    let expected = calculate_expected_exit(start, work_minutes, lunch, &config);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("17:30", "%H:%M").unwrap()
@@ -17,10 +32,12 @@ fn test_expected_exit_with_min_lunch() {
 
 #[test]
 fn test_expected_exit_with_short_lunch_treated_as_min() {
+    let config = Config::default();
+
     let start = "09:00";
     let lunch = 15; // less than 30, treated as 30
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
+    let expected = calculate_expected_exit(start, work_minutes, lunch, &config);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("17:30", "%H:%M").unwrap()
@@ -29,10 +46,12 @@ fn test_expected_exit_with_short_lunch_treated_as_min() {
 
 #[test]
 fn test_expected_exit_with_extra_lunch() {
+    let config = Config::default();
+
     let start = "09:00";
     let lunch = 45; // 30 + 15 extra → recover in exit
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
+    let expected = calculate_expected_exit(start, work_minutes, lunch, &config);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("17:45", "%H:%M").unwrap()
@@ -41,10 +60,12 @@ fn test_expected_exit_with_extra_lunch() {
 
 #[test]
 fn test_expected_exit_with_max_lunch_capped() {
+    let config = Config::default();
+
     let start = "09:00";
     let lunch = 120; // capped to 90
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let expected = logic::calculate_expected_exit(start, work_minutes, lunch);
+    let expected = calculate_expected_exit(start, work_minutes, lunch, &config);
     assert_eq!(
         expected,
         NaiveTime::parse_from_str("18:30", "%H:%M").unwrap()
@@ -53,22 +74,28 @@ fn test_expected_exit_with_max_lunch_capped() {
 
 #[test]
 fn test_surplus_exact_time() {
+    let config = Config::default();
+
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let surplus = logic::calculate_surplus("09:00", 30, "17:30", work_minutes);
+    let surplus = calculate_surplus("09:00", 30, "17:30", work_minutes, &config);
     assert_eq!(surplus, Duration::zero());
 }
 
 #[test]
 fn test_surplus_overtime() {
+    let config = Config::default();
+
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let surplus = logic::calculate_surplus("09:00", 30, "18:00", work_minutes);
+    let surplus = calculate_surplus("09:00", 30, "18:00", work_minutes, &config);
     assert_eq!(surplus, Duration::minutes(30));
 }
 
 #[test]
 fn test_surplus_leave_early() {
+    let config = Config::default();
+
     let work_minutes = utils::parse_work_duration_to_minutes("8h");
-    let surplus = logic::calculate_surplus("09:00", 30, "17:00", work_minutes);
+    let surplus = calculate_surplus("09:00", 30, "17:00", work_minutes, &config);
     assert_eq!(surplus, Duration::minutes(-30));
 }
 

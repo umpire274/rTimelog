@@ -1,156 +1,28 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use rtimelogger::config::Config;
 use rtimelogger::db;
 use rusqlite::Connection;
 
 mod commands;
-
-/// CLI application to track working hours with SQLite
-#[derive(Parser)]
-#[command(
-    name = "rtimelog",
-    version = env!("CARGO_PKG_VERSION"),
-    about = "A simple time logging CLI in Rust: track working hours and calculate surplus using SQLite",
-    long_about = None
-)]
-struct Cli {
-    /// Override database path (useful for tests or custom DB)
-    #[arg(global = true, long = "db")]
-    db: Option<String>,
-
-    /// Run in test mode (no config file update)
-    #[arg(global = true, long = "test", hide = true)]
-    test: bool,
-
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Initialize the database and configuration
-    Init,
-
-    /// Manage the configuration file (view or edit)
-    Conf {
-        /// Print the current configuration file to stdout
-        #[arg(long = "print", help = "Print the current configuration file")]
-        print_config: bool,
-
-        /// Edit the configuration file with your preferred editor
-        #[arg(
-            long = "edit",
-            help = "Edit the configuration file (default editor: $EDITOR, or nano/vim/notepad)"
-        )]
-        edit_config: bool,
-
-        /// Specify the editor to use (overrides $EDITOR/$VISUAL).
-        /// Common choices: vim, nano.
-        #[arg(
-            long = "editor",
-            help = "Specify the editor to use (vim, nano, or custom path)"
-        )]
-        editor: Option<String>,
-    },
-
-    /// Print or manage the internal log table
-    Log {
-        /// Print rows from the internal `log` table
-        #[arg(long = "print", help = "Print rows from the internal log table")]
-        print: bool,
-    },
-
-    /// Add or update a work session
-    Add {
-        /// Date (YYYY-MM-DD)
-        date: String,
-
-        /// (Positional)Position: A=office, R=remote
-        pos_pos: Option<String>,
-        /// (Positional) Start time (HH:MM)
-        start_pos: Option<String>,
-        /// (Positional) Lunch minutes
-        lunch_pos: Option<i32>,
-        /// (Positional) End time (HH:MM)
-        end_pos: Option<String>,
-
-        /// (Option) Position: A=office, R=remote
-        #[arg(long = "pos")]
-        pos: Option<String>,
-        /// (Option) Start time (HH:MM)
-        #[arg(long = "in")]
-        start: Option<String>,
-        /// (Option) Lunch minutes
-        #[arg(long = "lunch")]
-        lunch: Option<i32>,
-        /// (Option) End time (HH:MM)
-        #[arg(long = "out")]
-        end: Option<String>,
-        /// (Option) Pair id to edit (requires --edit)
-        #[arg(long = "pair", help = "Pair id to edit (with --edit)")]
-        edit_pair: Option<usize>,
-        /// Enable edit mode (together with --pair) to update an existing pair's events instead of creating new ones
-        #[arg(long = "edit", help = "Edit existing pair (use with --pair)")]
-        edit: bool,
-    },
-    /// Delete a work session by ID
-    Del {
-        /// Optional pair id to delete (use with date): deletes only the given pair for the date
-        #[arg(long = "pair", help = "Pair id to delete for the given date")]
-        pair: Option<usize>,
-
-        /// Date (YYYY-MM-DD) to delete (all sessions/events for this date) or required with --pair
-        date: String,
-    },
-    /// List sessions
-    List {
-        #[arg(long, short)]
-        period: Option<String>,
-
-        /// Filter by position (O=Office, R=Remote, H=Holiday)
-        #[arg(long)]
-        pos: Option<String>,
-
-        /// Show only today's record (if present)
-        #[arg(long = "now", help = "Show only today's record")]
-        now: bool,
-
-        /// When used with --now, show the detailed events (in/out) for today instead of aggregated work_sessions
-        #[arg(
-            long = "details",
-            help = "With --now show today's detailed events (in/out) instead of aggregated work_sessions"
-        )]
-        details: bool,
-
-        /// Show all events (in/out) from the `events` table
-        #[arg(
-            long = "events",
-            help = "List all events (in/out) from the events table"
-        )]
-        events: bool,
-
-        /// Filter a specific pair id (requires --events); pairs are per-day sequential in/out groupings
-        #[arg(long = "pairs", help = "Filter by pair id (only with --events)")]
-        pairs: Option<usize>,
-
-        /// Summarize events into per-pair rows (in/out, duration, lunch); use with --events
-        #[arg(
-            long = "summary",
-            help = "Show summarized per-pair rows (requires --events)"
-        )]
-        summary: bool,
-
-        /// Output in JSON format (applies to sessions or events depending on other flags)
-        #[arg(
-            long = "json",
-            help = "Output data as JSON instead of human-readable text"
-        )]
-        json: bool,
-    },
-}
+use rtimelogger::cli::{Cli, Commands};
 
 fn main() -> rusqlite::Result<()> {
     let cli = Cli::parse();
+
+    // Ensure filesystem migration ran early (before any DB open). This moves old "%APPDATA%/rtimelog" or
+    // "$HOME/.rtimelog" to the new location and renames config/db references if needed.
+    if let Err(e) = rtimelogger::config::migrate::run_fs_migration() {
+        eprintln!("⚠️  Filesystem migration warning: {}", e);
+    }
+
+    // Ensure config dir exists so Connection::open can create the DB file inside it.
+    if let Err(e) = std::fs::create_dir_all(Config::config_dir()) {
+        eprintln!("❌ Failed to create config directory: {}", e);
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(1),
+            Some(format!("Failed to create config dir: {}", e)),
+        ));
+    }
 
     // Determine DB path without loading the full config (Config::load may read files under
     // $HOME or %APPDATA% which tests may control); prefer to avoid reading it when --test is set.
@@ -167,7 +39,7 @@ fn main() -> rusqlite::Result<()> {
     } else if cli.test {
         // In test mode: use the default file name under the test config dir, but DO NOT call Config::load()
         Config::config_dir()
-            .join("rtimelog.sqlite")
+            .join("rtimelogger.sqlite")
             .to_string_lossy()
             .to_string()
     } else {
@@ -188,6 +60,7 @@ fn main() -> rusqlite::Result<()> {
             min_duration_lunch_break: 30,
             max_duration_lunch_break: 90,
             separator_char: "-".to_string(),
+            show_weekday: "None".to_string(),
         }
     } else {
         // For production, we load the configuration from disk.
@@ -203,7 +76,86 @@ fn main() -> rusqlite::Result<()> {
 
     // For other commands, open a single shared connection, set useful PRAGMA and ensure DB is initialized (creates
     // base tables and runs pending migrations).
-    let mut conn = Connection::open(&db_path)?;
+    // Try to open the DB; if opening fails (e.g. CannotOpen), attempt remediation once: run FS migration,
+    // create parent directories and try to touch the DB file, then retry.
+    let mut conn = match Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "⚠️  Failed to open DB at {:?}: {} -- attempting remediation",
+                db_path, e
+            );
+
+            // Diagnostic: print parent/exists/info to help debugging
+            let p = std::path::Path::new(&db_path);
+            if let Some(parent) = p.parent() {
+                eprintln!("   -> DB parent exists: {}", parent.exists());
+                if parent.exists() {
+                    match std::fs::metadata(parent) {
+                        Ok(md) => eprintln!(
+                            "      parent metadata: is_dir={} readonly={}",
+                            md.is_dir(),
+                            md.permissions().readonly()
+                        ),
+                        Err(me) => eprintln!("      parent metadata error: {}", me),
+                    }
+                }
+            }
+            eprintln!(
+                "   -> DB file exists: {}",
+                std::path::Path::new(&db_path).exists()
+            );
+
+            // Re-run filesystem migration (best-effort)
+            if let Err(e2) = rtimelogger::config::migrate::run_fs_migration() {
+                eprintln!("⚠️  Filesystem migration (retry) warning: {}", e2);
+            }
+            // Ensure parent dir exists
+            if let Some(parent) = std::path::Path::new(&db_path).parent()
+                && let Err(e3) = std::fs::create_dir_all(parent)
+            {
+                eprintln!(
+                    "❌ Failed to create parent directory for DB {:?}: {}",
+                    parent, e3
+                );
+            }
+            // Try to create (touch) the DB file so sqlite can open it
+            if let Err(e4) = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&db_path)
+            {
+                eprintln!("⚠️  Could not create DB file {:?}: {}", db_path, e4);
+            }
+
+            // Retry opening once
+            match Connection::open(&db_path) {
+                Ok(c2) => c2,
+                Err(e_final) => {
+                    eprintln!("❌ Final attempt to open DB failed: {}", e_final);
+                    // Extra diagnostic: list config dir contents
+                    if let Some(parent) = std::path::Path::new(&db_path).parent() {
+                        match std::fs::read_dir(parent) {
+                            Ok(rd) => {
+                                let names: Vec<String> = rd
+                                    .filter_map(|r| {
+                                        r.ok().and_then(|e| e.file_name().into_string().ok())
+                                    })
+                                    .collect();
+                                eprintln!("   -> Contents of {:?}: {:?}", parent, names);
+                            }
+                            Err(re) => {
+                                eprintln!("   -> Could not read parent dir {:?}: {}", parent, re)
+                            }
+                        }
+                    }
+                    return Err(e_final);
+                }
+            }
+        }
+    };
+
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
     db::init_db(&conn)?;
@@ -237,6 +189,11 @@ fn main() -> rusqlite::Result<()> {
         Commands::Log { .. } => commands::handle_log(&cli.command, &conn)?,
         Commands::Init => {
             // Already handled, but included for exhaustiveness
+        }
+        Commands::Backup { file, compress } => {
+            if let Err(e) = commands::handle_backup(&config, file, compress) {
+                eprintln!("❌ Backup failed: {}", e);
+            }
         }
     }
 
