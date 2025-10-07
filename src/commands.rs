@@ -667,7 +667,7 @@ pub fn handle_list(
                 let (pos_string, pos_color) = describe_position(s.position.as_str());
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
-                // Calculates the abbreviation of the weekday (default = middle → "Mon")
+                // Calculates the abbreviation of the weekday (default = medium → "Mon")
                 let wd = weekday_str(&s.date, 's');
                 if has_start && !has_end {
                     let expected =
@@ -917,7 +917,7 @@ pub fn handle_list_with_highlight(
         let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
-        // Calculates the abbreviation of the weekday (default = middle → "Mon")
+        // Calculates the abbreviation of the weekday (default = medium → "Mon")
         let wd = weekday_str(&s.date, 's');
 
         if has_start && !has_end {

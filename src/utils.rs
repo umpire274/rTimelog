@@ -34,7 +34,7 @@ pub fn iso2datetime(s: &str) -> Result<NaiveDateTime, ParseError> {
 
 /// Returns the day of the week in various formats...
 /// - `type_wd = 's'` → short, es. "Mo"
-/// - `type_wd = 'm'` → middle, es. "Mon"
+/// - `type_wd = 'm'` → medium, es. "Mon"
 /// - `type_wd = 'l'` → long, es. "Monday"
 pub fn weekday_str(date_str: &str, type_wd: char) -> String {
     if let Ok(ndate) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
@@ -60,7 +60,7 @@ pub fn weekday_str(date_str: &str, type_wd: char) -> String {
                 Weekday::Sun => "Sunday",
             }
             .to_string(),
-            // default → middle
+            // default → medium
             _ => match wd {
                 Weekday::Mon => "Mon",
                 Weekday::Tue => "Tue",
