@@ -618,9 +618,7 @@ fn test_delete_nonexistent_session() {
         .write_stdin("y\n")
         .assert()
         .success() // the command should not error
-        .stdout(
-            contains("Deleted 0 event(s) and 0 work_session(s)").or(contains("Deleted 0 event(s)")),
-        );
+        .stdout(contains("No events or work_sessions found for date"));
 }
 
 #[test]
