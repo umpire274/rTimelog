@@ -1,4 +1,5 @@
 use chrono::{Datelike, NaiveDate, NaiveDateTime, ParseError, Weekday};
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// Convert a `NaiveDate` into an ISO 8601 string (YYYY-MM-DD)
@@ -188,7 +189,7 @@ pub fn is_last_day_of_month(date_str: &str) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-pub fn compress_backup(dest: &Path) -> std::io::Result<PathBuf> {
+pub fn compress_backup(dest: &Path) -> io::Result<PathBuf> {
     use std::fs::File;
     use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
