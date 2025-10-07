@@ -269,3 +269,73 @@ fn old_config_dir() -> PathBuf {
         Path::new(&home).join(".rtimelog")
     }
 }
+
+pub fn migrate_add_show_weekday(conn: &Connection) -> Result<(), Error> {
+    let version = "20251008_0011_add_show_weekday";
+
+    // verifica se già applicata
+    let mut chk = conn.prepare(
+        "SELECT 1 FROM log WHERE operation = 'migration_applied' AND target = ?1 LIMIT 1",
+    )?;
+    if chk.query_row([version], |_| Ok(())).optional()?.is_some() {
+        return Ok(()); // già applicata
+    }
+
+    let conf_file = super::Config::config_file();
+    if conf_file.exists() {
+        let content = fs::read_to_string(&conf_file).map_err(|e| {
+            Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1),
+                Some(format!("Failed to read config {:?}: {}", conf_file, e)),
+            )
+        })?;
+        if let Ok(mut yaml) = serde_yaml::from_str::<Value>(&content)
+            && let Some(map) = yaml.as_mapping_mut()
+        {
+            let key = Value::String("show_weekday".to_string());
+            if !map.contains_key(&key) {
+                map.insert(key.clone(), Value::String("None".to_string()));
+
+                // Serializza
+                let serialized = serde_yaml::to_string(&yaml).map_err(|e| {
+                    Error::SqliteFailure(
+                        rusqlite::ffi::Error::new(1),
+                        Some(format!("Failed to serialize config {:?}: {}", conf_file, e)),
+                    )
+                })?;
+
+                // Aggiungi commento YAML subito dopo la riga 'show_weekday'
+                let mut new_content = String::new();
+                for line in serialized.lines() {
+                    new_content.push_str(line);
+                    new_content.push('\n');
+                    if line.starts_with("show_weekday:") {
+                        new_content.push_str(
+                            "  # show-weekday parameter options:\n\
+                                 #   None   → do not show weekday\n\
+                                 #   Short  → Mo, Tu, We, Th, Fr, Sa, Su\n\
+                                 #   Medium → Mon, Tue, Wed, Thu, Fri, Sat, Sun\n\
+                                 #   Long   → Monday, Tuesday, ...\n",
+                        );
+                    }
+                }
+
+                fs::write(&conf_file, new_content).map_err(|e| {
+                    Error::SqliteFailure(
+                        rusqlite::ffi::Error::new(1),
+                        Some(format!(
+                            "Failed to write updated config {:?}: {}",
+                            conf_file, e
+                        )),
+                    )
+                })?;
+            }
+        }
+    }
+
+    println!(
+        "✅ Migration applied: {} — Add show_weekday parameter to config",
+        version
+    );
+    Ok(())
+}

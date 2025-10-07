@@ -583,6 +583,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         {
             Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
                 Ok(last_id) => {
+                    println!();
                     let _ = handle_list_with_highlight(None, None, conn, config, Some(last_id));
                 }
                 Err(rusqlite::Error::QueryReturnedNoRows) => {}
@@ -616,6 +617,13 @@ pub fn handle_list(
     if args.now {
         // Get today's date in YYYY-MM-DD
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        let wd_type = match config.show_weekday.as_str() {
+            "Short" => 's',
+            "Long" => 'l',
+            "None" => '\0',
+            _ => 'm', // Medium default
+        };
 
         // If user supplied --now --events but not --details, map to details for convenience
         if args.events && !args.details {
@@ -667,8 +675,14 @@ pub fn handle_list(
                 let (pos_string, pos_color) = describe_position(s.position.as_str());
                 let has_start = !s.start.trim().is_empty();
                 let has_end = !s.end.trim().is_empty();
+
                 // Calculates the abbreviation of the weekday (default = medium → "Mon")
-                let wd = weekday_str(&s.date, 's');
+                let date_shown = if wd_type == '\0' {
+                    s.date.clone()
+                } else {
+                    format!("{} ({})", s.date, weekday_str(&s.date, wd_type))
+                };
+
                 if has_start && !has_end {
                     let expected =
                         logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
@@ -690,10 +704,9 @@ pub fn handle_list(
                         "-".to_string()
                     };
                     println!(
-                        "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                        "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                         s.id,
-                        s.date,
-                        wd,
+                        date_shown,
                         pos_color,
                         pos_string,
                         s.start,
@@ -736,10 +749,9 @@ pub fn handle_list(
                             "\x1b[32m"
                         };
                         println!(
-                            "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                            "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
                             s.id,
-                            s.date,
-                            wd,
+                            date_shown,
                             pos_color,
                             pos_string,
                             s.start,
@@ -767,10 +779,9 @@ pub fn handle_list(
                             "\x1b[32m"
                         };
                         println!(
-                            "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
+                            "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {:^5} | End {} | Expected {} | {}Surplus {:^8}\x1b[0m",
                             s.id,
-                            s.date,
-                            wd,
+                            date_shown,
                             pos_color,
                             pos_string,
                             s.start,
@@ -786,8 +797,8 @@ pub fn handle_list(
                     }
                 } else {
                     println!(
-                        "{:>3}: {} ({}) | {}{:<16}\x1b[0m | -",
-                        s.id, s.date, wd, pos_color, pos_string
+                        "{:>3}: {} | {}{:<16}\x1b[0m | -",
+                        s.id, date_shown, pos_color, pos_string
                     );
                 }
             }
@@ -863,6 +874,13 @@ pub fn handle_list_with_highlight(
     // Normalize pos to uppercase
     let pos_upper = pos.as_ref().map(|p| p.trim().to_uppercase());
 
+    let wd_type = match config.show_weekday.as_str() {
+        "Short" => 's',
+        "Long" => 'l',
+        "None" => '\0',
+        _ => 'm', // Medium default
+    };
+
     // If highlight_id is Some(id) -> retrieve only that session (efficient single-row query).
     // Otherwise, retrieve the full list based on filters.
     let sessions = if let Some(id) = highlight_id {
@@ -917,8 +935,13 @@ pub fn handle_list_with_highlight(
         let (pos_string, pos_color) = describe_position(s.position.as_str());
         let has_start = !s.start.trim().is_empty();
         let has_end = !s.end.trim().is_empty();
+
         // Calculates the abbreviation of the weekday (default = medium → "Mon")
-        let wd = weekday_str(&s.date, 's');
+        let date_shown = if wd_type == '\0' {
+            s.date.clone()
+        } else {
+            format!("{} ({})", s.date, weekday_str(&s.date, wd_type))
+        };
 
         if has_start && !has_end {
             // Only start → calculate expected end
@@ -945,10 +968,9 @@ pub fn handle_list_with_highlight(
             let end_fmt = format!("{:^5}", end_str);
 
             println!(
-                "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
+                "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | {}Lunch {}\x1b[0m | {}End {}\x1b[0m | Expected {} | \x1b[90mSurplus {:^8}\x1b[0m",
                 s.id,
-                s.date,
-                wd,
+                date_shown,
                 pos_color,
                 pos_string,
                 s.start,
@@ -1009,10 +1031,9 @@ pub fn handle_list_with_highlight(
                 let lunch_fmt = format!("{:^5}", lunch_str);
 
                 println!(
-                    "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
+                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | Lunch {} | End {} | Expected {} | Surplus {}{:>4} min\x1b[0m",
                     s.id,
-                    s.date,
-                    wd,
+                    date_shown,
                     pos_color,
                     pos_string,
                     s.start,
@@ -1030,10 +1051,9 @@ pub fn handle_list_with_highlight(
                 let lunch_fmt = format!("{:^5}", "-".to_string());
 
                 println!(
-                    "{:>3}: {} ({}) | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
+                    "{:>3}: {} | {}{:<16}\x1b[0m | Start {} | \x1b[90mLunch {}\x1b[0m | End {} | \x1b[36mWorked {:>2} h {:02} min\x1b[0m",
                     s.id,
-                    s.date,
-                    wd,
+                    date_shown,
                     pos_color,
                     pos_string,
                     s.start,
@@ -1056,10 +1076,9 @@ pub fn handle_list_with_highlight(
             let lunch_fmt = format!("{:^5}", lunch_str);
 
             println!(
-                "{:>3}: {} ({}) | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
+                "{:>3}: {} | {}{:<16}\x1b[0m | \x1b[90mStart {:^5} | Lunch {} | End {:^5} | Expected {:^5} | Surplus {:>4} min\x1b[0m",
                 s.id,
-                s.date,
-                wd,
+                date_shown,
                 pos_color,
                 pos_string,
                 if has_start { &s.start } else { "-" },

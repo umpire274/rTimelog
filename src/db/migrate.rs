@@ -73,6 +73,18 @@ fn upgrade_legacy_log_schema(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn query_pairs(stmt: &mut rusqlite::Statement<'_>) -> Result<Vec<(String, String)>, Error> {
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    let mut result = Vec::new();
+    for r in rows {
+        result.push(r?);
+    }
+    Ok(result)
+}
+
 /// Assicurati che esista la tabella che traccia le migrazioni applicate
 fn ensure_migrations_table(conn: &Connection) -> Result<(), Error> {
     // Prima prova ad aggiornare eventuale schema legacy della tabella log
@@ -152,11 +164,10 @@ fn applied_versions(conn: &Connection) -> Result<HashSet<String>, Error> {
         } else {
             // Fallback for old log schema: try to infer applied migrations from `function` and `message` content
             let mut stmt_fallback = conn.prepare("SELECT function, message FROM log")?;
-            let rows = stmt_fallback.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?;
+            let rows = query_pairs(&mut stmt_fallback)?;
+
             for r in rows {
-                let (func, msg) = r?;
+                let (func, msg) = r;
                 // If message contains "Applied migration <version>", extract version
                 if let Some(idx) = msg.find("Applied migration ") {
                     let after = msg[idx + "Applied migration ".len()..].trim();
@@ -258,6 +269,11 @@ static ALL_MIGRATIONS: &[Migration] = &[
         version: "20251006_0010_rename_rtimelog_to_rtimelogger",
         description: "Rename configuration directory/file and DB from 'rtimelog' to 'rtimelogger'",
         up: crate::config::migrate::run_config_migration,
+    },
+    Migration {
+        version: "20251008_0011_add_show_weekday",
+        description: "Add `show_weekday` parameter to configuration file",
+        up: crate::config::migrate::migrate_add_show_weekday,
     },
 ];
 
@@ -668,11 +684,10 @@ fn migrate_to_unify_schema_migrations(conn: &Connection) -> rusqlite::Result<()>
     {
         // Read all rows
         let mut sel = conn.prepare("SELECT version, applied_at FROM schema_migrations")?;
-        let rows = sel.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
+        let rows = query_pairs(&mut sel)?;
+
         for r in rows {
-            let (version, applied_at) = r?;
+            let (version, applied_at) = r;
             // Insert into log
             conn.execute(
                 "INSERT INTO log (date, operation, target, message) VALUES (?1, ?2, ?3, ?4)",

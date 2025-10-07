@@ -60,6 +60,7 @@ mod tests {
             min_duration_lunch_break: 30,
             max_duration_lunch_break: 90,
             separator_char: "-".to_string(),
+            show_weekday: "None".to_string(),
         };
 
         // Ensure no events initially
