@@ -1185,7 +1185,7 @@ pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result
         dest.to_path_buf()
     };
 
-    if let Ok(conn) = rusqlite::Connection::open(src) {
+    if let Ok(conn) = Connection::open(src) {
         let _ = db::ttlog(
             &conn,
             "backup",
