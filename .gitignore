@@ -4,3 +4,7 @@
 *.png
 *.sqlite
 .DS_Store
+/src/.DS_Store
+/.vscode
+/logs
+*.log
