@@ -361,6 +361,7 @@ fn migrate_to_030_rel(conn: &Connection) -> rusqlite::Result<()> {
 
         db::ttlog(
             conn,
+            "migration_applied",
             "migrate_to_030_rel",
             "Migration table \'work_sessions\' completed.",
         )?;
@@ -403,6 +404,7 @@ fn migrate_to_032_rel(conn: &Connection) -> rusqlite::Result<()> {
 
         db::ttlog(
             conn,
+            "migration_applied",
             "migrate_to_032_rel",
             "Migration table \'work_sessions\' completed.",
         )?;
@@ -468,6 +470,7 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
 
     db::ttlog(
         conn,
+        "migration_applied",
         "migrate_to_033_rel",
         "Migration configuration file completed.",
     )?;
@@ -495,6 +498,7 @@ fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
 
     db::ttlog(
         conn,
+        "migration_applied",
         "migrate_to_034_rel",
         "Added indexes idx_work_sessions_date and idx_work_sessions_position",
     )?;
@@ -526,6 +530,7 @@ fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
             fs::write(&path, new_yaml).map_err(|e| Error::ToSqlConversionFailure(Box::new(e)))?;
             db::ttlog(
                 conn,
+                "migration_applied",
                 "migrate_to_035_rel",
                 "Inserted separator_char into config file",
             )?;
@@ -556,7 +561,12 @@ fn migrate_to_036_create_events(conn: &Connection) -> rusqlite::Result<()> {
         ",
     )?;
 
-    db::ttlog(conn, "migrate_to_036_create_events", "Created events table")?;
+    db::ttlog(
+        conn,
+        "migration_applied",
+        "migrate_to_036_create_events",
+        "Created events table",
+    )?;
     println!("✅ Created events table");
 
     Ok(())
@@ -623,6 +633,7 @@ fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite
     if inserted > 0 {
         db::ttlog(
             conn,
+            "migration_applied",
             "migrate_to_037_migrate_work_sessions_to_events",
             &format!("Inserted {} events from work_sessions migration", inserted),
         )?;
@@ -663,6 +674,7 @@ fn migrate_to_038_add_m(conn: &Connection) -> rusqlite::Result<()> {
 
         db::ttlog(
             conn,
+            "migration_applied",
             "migrate_to_038_add_m",
             "Migration table 'work_sessions' to include 'M' completed.",
         )?;
@@ -705,6 +717,7 @@ fn migrate_to_unify_schema_migrations(conn: &Connection) -> rusqlite::Result<()>
 
         db::ttlog(
             conn,
+            "migration_applied",
             "migrate_to_unify_schema_migrations",
             "Imported schema_migrations into unified log and dropped legacy table",
         )?;

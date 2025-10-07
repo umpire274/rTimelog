@@ -275,11 +275,12 @@ pub fn upsert_end(conn: &Connection, date: &str, end: &str) -> Result<()> {
     upsert_field(conn, date, "end_time", end, "O")
 }
 
-pub fn ttlog(conn: &Connection, operation: &str, message: &str) -> Result<()> {
+pub fn ttlog(conn: &Connection, operation: &str, target: &str, message: &str) -> Result<()> {
     let now = Utc::now().to_rfc3339(); // ISO 8601
-    let mut stmt =
-        conn.prepare_cached("INSERT INTO log (date, operation, message) VALUES (?1, ?2, ?3)")?;
-    stmt.execute(params![&now, operation, message])?;
+    let mut stmt = conn.prepare_cached(
+        "INSERT INTO log (date, operation, target, message) VALUES (?1, ?2, ?3, ?4)",
+    )?;
+    stmt.execute(params![&now, operation, target, message])?;
     Ok(())
 }
 

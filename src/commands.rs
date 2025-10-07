@@ -3,11 +3,15 @@ use crate::Commands;
 use chrono::NaiveTime;
 use rtimelogger::config::Config;
 use rtimelogger::events::create_missing_event;
-use rtimelogger::utils::{describe_position, mins2hhmm, print_separator, weekday_str};
+use rtimelogger::utils::{
+    compress_backup, describe_position, mins2hhmm, print_separator, weekday_str,
+};
 use rtimelogger::{db, logic, utils};
 use rusqlite::Connection;
 use std::io::{Write, stdin};
+use std::path::Path;
 use std::process::Command;
+use std::{fs, io};
 
 pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
     if let Commands::Conf {
@@ -98,6 +102,7 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
         if let Err(e) = db::ttlog(
             &conn,
             "init",
+            "New DB test",
             &format!("Test DB initialized at {}", db_path),
         ) {
             eprintln!("⚠️ Failed to write internal log: {}", e);
@@ -111,6 +116,7 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
         if let Err(e) = db::ttlog(
             &conn,
             "init",
+            "New prod DB",
             &format!("Database initialized at {}", db_path),
         ) {
             eprintln!("⚠️ Failed to write internal log: {}", e);
@@ -157,7 +163,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                 "Are you sure to delete the pair {} of the date {} (N/y) ? ",
                 pair_id, date
             );
-            let _ = std::io::stdout().flush();
+            let _ = io::stdout().flush();
             let mut input = String::new();
             stdin().read_line(&mut input).unwrap_or(0);
             let choice = input.trim().to_lowercase();
@@ -175,6 +181,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                     let _ = db::ttlog(
                         conn,
                         "del",
+                        "Delete pair events on date",
                         &format!("Deleted {} events for date={} pair={}", rows, date, pair_id),
                     );
                 }
@@ -195,7 +202,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                 "Are you sure to delete the records of the date {} (N/y) ? ",
                 date
             );
-            let _ = std::io::stdout().flush();
+            let _ = io::stdout().flush();
             let mut input = String::new();
             stdin().read_line(&mut input).unwrap_or(0);
             let choice = input.trim().to_lowercase();
@@ -214,6 +221,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                         let _ = db::ttlog(
                             conn,
                             "del",
+                            "Delete all events and sessions for date",
                             &format!(
                                 "Deleted date={} events={} work_sessions={}",
                                 date, ev_rows, ws_rows
@@ -428,6 +436,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
             } else if let Err(e) = db::ttlog(
                 conn,
                 "edit",
+                "Edit existing pair events",
                 &format!("date={} pair={} | {}", date, pair_id, changes.join(", ")),
             ) {
                 eprintln!("\u{26a0}\u{FE0F} Failed to log edit: {}", e);
@@ -572,7 +581,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         // Log the add operation if we recorded changes
         if !changes.is_empty() {
             let msg = format!("date={} | {}", date, changes.join(", "));
-            if let Err(e) = db::ttlog(conn, "add", &msg) {
+            if let Err(e) = db::ttlog(conn, "add", "Add record on events", &msg) {
                 eprintln!("⚠️ Failed to write internal log: {}", e);
             }
         }
@@ -1150,6 +1159,45 @@ pub fn handle_log(cmd: &Commands, conn: &Connection) -> rusqlite::Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result<()> {
+    let src = Path::new(&config.database);
+    let dest = Path::new(file);
+
+    if !src.exists() {
+        eprintln!("❌ Source database not found at {:?}", src);
+        return Ok(());
+    }
+
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::copy(&src, &dest)?;
+    println!("✅ Backup created: {}", dest.display());
+
+    // Se compress è attivo → ottieni il nome del file compresso
+    let final_path = if *compress {
+        compress_backup(dest)?
+    } else {
+        dest.to_path_buf()
+    };
+
+    if let Ok(conn) = rusqlite::Connection::open(src) {
+        let _ = db::ttlog(
+            &conn,
+            "backup",
+            &final_path.to_string_lossy(),
+            if *compress {
+                "Database backup created and compressed"
+            } else {
+                "Database backup created"
+            },
+        );
+    }
+
     Ok(())
 }
 

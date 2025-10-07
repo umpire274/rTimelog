@@ -1,4 +1,5 @@
 use chrono::{Datelike, NaiveDate, NaiveDateTime, ParseError, Weekday};
+use std::path::{Path, PathBuf};
 
 /// Convert a `NaiveDate` into an ISO 8601 string (YYYY-MM-DD)
 pub fn date2iso(date: &NaiveDate) -> String {
@@ -184,4 +185,44 @@ pub fn is_last_day_of_month(date_str: &str) -> bool {
         }
         Err(_) => false,
     }
+}
+
+#[cfg(target_os = "windows")]
+pub fn compress_backup(dest: &Path) -> std::io::Result<PathBuf> {
+    use std::fs::File;
+    use zip::{CompressionMethod, ZipWriter, write::FileOptions};
+
+    let zip_path = dest.with_extension("zip");
+    let file = File::create(&zip_path)?;
+    let mut zip = ZipWriter::new(file);
+
+    let options: FileOptions<'_, ()> = FileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .unix_permissions(0o644);
+
+    let mut f = File::open(dest)?;
+    zip.start_file(dest.file_name().unwrap().to_string_lossy(), options)?;
+    std::io::copy(&mut f, &mut zip)?;
+    zip.finish()?;
+
+    println!("✅ Compressed backup: {}", zip_path.display());
+    Ok(zip_path)
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub fn compress_backup(dest: &Path) -> io::Result<PathBuf> {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::fs::File;
+    use tar::Builder;
+
+    let tar_gz_path = dest.with_extension("tar.gz");
+    let tar_gz = File::create(&tar_gz_path)?;
+    let enc = GzEncoder::new(tar_gz, Compression::default());
+    let mut tar = Builder::new(enc);
+    tar.append_path_with_name(dest, dest.file_name().unwrap())?;
+    tar.finish()?;
+
+    println!("✅ Compressed backup: {}", tar_gz_path.display());
+    Ok(tar_gz_path)
 }

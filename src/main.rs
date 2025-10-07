@@ -190,6 +190,11 @@ fn main() -> rusqlite::Result<()> {
         Commands::Init => {
             // Already handled, but included for exhaustiveness
         }
+        Commands::Backup { file, compress } => {
+            if let Err(e) = commands::handle_backup(&config, file, compress) {
+                eprintln!("❌ Backup failed: {}", e);
+            }
+        }
     }
 
     Ok(())

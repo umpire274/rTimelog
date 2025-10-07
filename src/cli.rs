@@ -143,4 +143,15 @@ pub enum Commands {
         )]
         json: bool,
     },
+
+    /// Create a backup copy of the database
+    Backup {
+        /// Destination file path (absolute path required)
+        #[arg(long, value_name = "FILE")]
+        file: String,
+
+        /// Compress the backup (zip on Windows, tar.gz on Unix)
+        #[arg(long)]
+        compress: bool,
+    },
 }
