@@ -1175,7 +1175,7 @@ pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result
         fs::create_dir_all(parent)?;
     }
 
-    fs::copy(&src, &dest)?;
+    fs::copy(src, dest)?;
     println!("✅ Backup created: {}", dest.display());
 
     // Se compress è attivo → ottieni il nome del file compresso
