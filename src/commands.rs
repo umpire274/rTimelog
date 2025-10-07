@@ -122,6 +122,8 @@ pub fn handle_init(cli: &Cli, db_path: &str) -> rusqlite::Result<()> {
 
 pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()> {
     if let Commands::Del { pair, date } = cmd {
+        let date = date.trim();
+
         // validate date
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
             eprintln!(
@@ -179,6 +181,15 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                 Err(e) => eprintln!("❌ Error deleting pair events: {}", e),
             }
         } else {
+            // Cancella TUTTA la giornata
+            let ev_n = db::count_events_by_date(conn, date).unwrap_or(0);
+            let ws_n = db::count_sessions_by_date(conn, date).unwrap_or(0);
+
+            if ev_n == 0 && ws_n == 0 {
+                println!("⚠️  No events or work_sessions found for date {}", date);
+                return Ok(());
+            }
+
             // Delete all records for the date (work_sessions + events)
             print!(
                 "Are you sure to delete the records of the date {} (N/y) ? ",

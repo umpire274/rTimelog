@@ -441,6 +441,18 @@ pub fn force_set_lunch(conn: &Connection, date: &str, lunch: i32) -> Result<()> 
     force_set_field(conn, date, "lunch_break", lunch, "O")
 }
 
+pub fn count_events_by_date(conn: &Connection, date: &str) -> Result<i64> {
+    let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM events WHERE date = ?1")?;
+    let n: i64 = stmt.query_row([date], |r| r.get(0))?;
+    Ok(n)
+}
+
+pub fn count_sessions_by_date(conn: &Connection, date: &str) -> Result<i64> {
+    let mut stmt = conn.prepare_cached("SELECT COUNT(*) FROM work_sessions WHERE date = ?1")?;
+    let n: i64 = stmt.query_row([date], |r| r.get(0))?;
+    Ok(n)
+}
+
 // Struct per passare argomenti alla funzione add_event
 pub struct AddEventArgs<'a> {
     pub date: &'a str,
