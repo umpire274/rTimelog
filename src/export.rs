@@ -146,7 +146,7 @@ fn load_sessions(conn: &Connection, _range: Option<&str>) -> rusqlite::Result<Ve
     rows.collect()
 }
 
-fn ensure_writable(path: &Path, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn ensure_writable(path: &Path, force: bool) -> Result<(), Box<dyn Error>> {
     if !path.exists() {
         return Ok(());
     }
@@ -168,7 +168,7 @@ fn ensure_writable(path: &Path, force: bool) -> Result<(), Box<dyn std::error::E
     if ans == "y" || ans == "yes" {
         Ok(())
     } else {
-        Err(format!("Export annullato: file esistente non sovrascritto").into())
+        Err("Export cancelled: existing file not overwritten".to_string().into())
     }
 }
 
