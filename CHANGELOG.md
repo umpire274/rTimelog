@@ -22,6 +22,7 @@
 - Verified all tests passing successfully after CLI refactor.
 - Switched to named-column mapping in `events.rs`/`db.rs` (robust against column order changes); updated SELECTs to
   include `pair`.
+- Renamed exported session field from `duration_min` to `work_duration` (human-readable string, e.g. 08H 30M)
 
 ### Fixed
 

@@ -13,7 +13,7 @@ pub struct WorkSession {
     pub start: String,
     pub lunch: i32,
     pub end: String,
-    pub duration_min: Option<i32>, // minuti netti: (end-start)-lunch
+    pub work_duration: Option<i32>, // minuti netti: (end-start)-lunch
 }
 
 /// Represents a single punch event (in/out)
@@ -38,7 +38,7 @@ fn hhmm_to_minutes(s: &str) -> Option<i32> {
     Some(h * 60 + m)
 }
 
-fn calculate_duration_min(start: &str, end: &str, lunch: i32) -> Option<i32> {
+fn calculate_work_duration(start: &str, end: &str, lunch: i32) -> Option<i32> {
     let sm = hhmm_to_minutes(start)?;
     let em = hhmm_to_minutes(end)?;
     if em >= sm {
@@ -49,11 +49,11 @@ fn calculate_duration_min(start: &str, end: &str, lunch: i32) -> Option<i32> {
     }
 }
 
-fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
+pub fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
     let start: Option<String> = row.get("start_time")?;
     let end: Option<String> = row.get("end_time")?;
     let lunch: i32 = row.get::<_, Option<i32>>("lunch_break")?.unwrap_or(0);
-    let duration_min = calculate_duration_min(
+    let work_duration = calculate_work_duration(
         start.clone().unwrap().as_str(),
         end.clone().unwrap().as_str(),
         lunch,
@@ -66,7 +66,7 @@ fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
         start: start.unwrap_or_default(),
         lunch,
         end: end.unwrap_or_default(),
-        duration_min,
+        work_duration,
     })
 }
 
@@ -616,7 +616,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
             pending_in = Some(e);
         } else if e.kind == "out" {
             if let Some(in_ev) = pending_in.take() {
-                let duration_min = calculate_duration_min(
+                let work_duration = calculate_work_duration(
                     in_ev.clone().time.as_str(),
                     e.clone().time.as_str(),
                     e.lunch_break,
@@ -629,12 +629,12 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
                     start: in_ev.time.clone(),
                     lunch: e.lunch_break,
                     end: e.time.clone(),
-                    duration_min,
+                    work_duration,
                 };
                 sessions.push(ws);
             } else {
-                let duration_min =
-                    calculate_duration_min("", e.clone().time.as_str(), e.lunch_break);
+                let work_duration =
+                    calculate_work_duration("", e.clone().time.as_str(), e.lunch_break);
                 // out without in -> partial session
                 let ws = WorkSession {
                     id: e.id,
@@ -643,7 +643,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
                     start: "".to_string(),
                     lunch: e.lunch_break,
                     end: e.time.clone(),
-                    duration_min,
+                    work_duration,
                 };
                 sessions.push(ws);
             }
@@ -652,7 +652,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
 
     // any remaining pending_in -> incomplete session
     if let Some(in_ev) = pending_in {
-        let duration_min = calculate_duration_min(in_ev.clone().time.as_str(), "", 0);
+        let work_duration = calculate_work_duration(in_ev.clone().time.as_str(), "", 0);
         let ws = WorkSession {
             id: in_ev.id,
             date: date.to_string(),
@@ -660,7 +660,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
             start: in_ev.time.clone(),
             lunch: 0,
             end: "".to_string(),
-            duration_min,
+            work_duration,
         };
         sessions.push(ws);
     }
