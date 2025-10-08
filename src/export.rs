@@ -89,26 +89,41 @@ pub fn handle_export(cmd: &Commands, conn: &Connection) -> Result<(), Box<dyn Er
     Ok(())
 }
 
+fn build_query_with_range(
+    base_select: &str,
+    bounds: Option<(String, String)>,
+    order_clause: &str,
+) -> (String, Vec<String>) {
+    let mut sql = String::from(base_select);
+    let mut owned_params: Vec<String> = Vec::new();
+    if let Some((start, end)) = bounds {
+        sql.push_str(" WHERE date BETWEEN ?1 AND ?2");
+        owned_params.push(start);
+        owned_params.push(end);
+    }
+    sql.push_str(order_clause);
+    (sql, owned_params)
+}
+
 fn load_events(
     conn: &Connection,
     bounds: Option<(String, String)>,
 ) -> rusqlite::Result<Vec<EventExport>> {
-    let mut sql = String::from(
+    let (sql, owned_params) = build_query_with_range(
         r#"
         SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at
         FROM events
         "#,
+        bounds,
+        " ORDER BY date, time",
     );
-    let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
-    if let Some((start, end)) = bounds {
-        sql.push_str(" WHERE date BETWEEN ?1 AND ?2");
-        params.push(&start);
-        params.push(&end);
-    }
-    sql.push_str(" ORDER BY date, time");
 
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], |row| {
+    let param_refs: Vec<&dyn rusqlite::ToSql> = owned_params
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
         db::row_to_event(row).map(|ev| EventExport {
             id: ev.id,
             date: ev.date,
@@ -128,7 +143,7 @@ fn load_sessions(
     conn: &Connection,
     bounds: Option<(String, String)>,
 ) -> rusqlite::Result<Vec<SessionExport>> {
-    let mut sql = String::from(
+    let (sql, owned_params) = build_query_with_range(
         r#"
         SELECT
           id,
@@ -139,17 +154,16 @@ fn load_sessions(
           end_time
         FROM work_sessions
         "#,
+        bounds,
+        " ORDER BY date, start_time",
     );
-    let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
-    if let Some((start, end)) = bounds {
-        sql.push_str(" WHERE date BETWEEN ?1 AND ?2");
-        params.push(&start);
-        params.push(&end);
-    }
-    sql.push_str(" ORDER BY date, start_time");
 
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], |row| {
+    let param_refs: Vec<&dyn rusqlite::ToSql> = owned_params
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
         db::row_to_worksession(row).map(|ws| SessionExport {
             id: ws.id,
             date: ws.date,
