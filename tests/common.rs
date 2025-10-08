@@ -35,13 +35,31 @@ pub fn init_db_with_data(db_path: &str) {
     // add couple of sessions via CLI (which will also populate events)
     Command::cargo_bin("rtimelogger")
         .unwrap()
-        .args(["--db", db_path, "add", "2025-09-01", "O", "09:00", "30", "17:00"])
+        .args([
+            "--db",
+            db_path,
+            "add",
+            "2025-09-01",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
         .assert()
         .success();
 
     Command::cargo_bin("rtimelogger")
         .unwrap()
-        .args(["--db", db_path, "add", "2025-09-15", "O", "09:00", "30", "17:00"])
+        .args([
+            "--db",
+            db_path,
+            "add",
+            "2025-09-15",
+            "O",
+            "09:00",
+            "30",
+            "17:00",
+        ])
         .assert()
         .success();
 }
