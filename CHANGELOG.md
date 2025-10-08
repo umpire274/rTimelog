@@ -1,5 +1,40 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- New `export` command with support for multiple output formats:
+    - `--json` → export data in JSON format
+    - `--csv` → export data in CSV format
+- `--events` / `--sessions` switches to export either raw events or aggregated sessions.
+- `--file <ABSOLUTE_PATH>` to choose the output path.
+- Overwrite confirmation when the output file already exists; bypass with `--force` / `-f`.
+- `WorkSession.duration_min`: net duration in minutes computed as `(end - start) - lunch`.
+- DB migration: added physical `pair` column to `events` with backfill via recalculation.
+
+### Changed
+
+- Removed the `--json` option from the `list` command, as it was no longer needed.
+- Updated integration tests to handle plain text output instead of JSON.
+- Refactored `test_create_missing_in_when_only_out_exists` and `test_update_does_not_create_new_pair`
+  to parse and validate event data from formatted CLI output.
+- Verified all tests passing successfully after CLI refactor.
+- Switched to named-column mapping in `events.rs`/`db.rs` (robust against column order changes); updated SELECTs to
+  include `pair`.
+
+### Fixed
+
+- Resolved type/index errors after schema changes (e.g., `InvalidColumnType`) by reading columns by name.
+- Aligned AUTOINCREMENT sequence during table reconstruction to avoid ID issues after migrations.
+
+### Notes
+
+- `pair` uses `DEFAULT 0` by design to ease debugging and recalculation.
+- `--range` for `export` is currently a stub and will be implemented later.
+
+---
+
 ## [0.5.0] - 2025-10-08
 
 ### Added
