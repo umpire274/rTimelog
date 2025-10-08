@@ -24,6 +24,7 @@ pub struct Event {
     pub kind: String,     // "in" or "out"
     pub position: String, // O,R,H,C
     pub lunch_break: i32, // minutes, typically set on out
+    pub pair: i32,
     pub source: String,
     pub meta: String,
     pub created_at: String, // ISO timestamp
@@ -48,9 +49,10 @@ fn row_to_event(row: &rusqlite::Row) -> Result<Event> {
         kind: row.get(3)?,
         position: row.get(4)?,
         lunch_break: row.get(5)?,
-        source: row.get(6)?,
-        meta: row.get(7)?,
-        created_at: row.get(8)?,
+        pair: row.get(6)?,
+        source: row.get(7)?,
+        meta: row.get(8)?,
+        created_at: row.get(9)?,
     })
 }
 
@@ -118,6 +120,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             kind TEXT NOT NULL CHECK (kind IN ('in','out')),
             position TEXT NOT NULL CHECK (position IN ('O','R','H','C','M')),
             lunch_break INTEGER NOT NULL DEFAULT 0, -- minutes, typically set on out
+            pair INTEGER DEFAULT 0,
             source TEXT NOT NULL,
             meta TEXT,
             created_at TEXT NOT NULL     -- ISO 8601 timestamp

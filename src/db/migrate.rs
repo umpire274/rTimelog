@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::db;
 use chrono::Utc;
-use rusqlite::{Connection, Error, OptionalExtension, ffi, params};
+use rusqlite::{Connection, Error, OptionalExtension, Result, ffi, params};
 use serde_yaml::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -9,11 +9,11 @@ use std::fs;
 pub struct Migration {
     pub version: &'static str,
     pub description: &'static str,
-    pub up: fn(&Connection) -> rusqlite::Result<()>, // ✅ giusto
+    pub up: fn(&Connection) -> Result<()>, // ✅ giusto
 }
 
 /// Aggiorna la tabella `log` legacy (con colonna `function`) al nuovo schema con `operation` e `target`.
-fn upgrade_legacy_log_schema(conn: &Connection) -> rusqlite::Result<()> {
+fn upgrade_legacy_log_schema(conn: &Connection) -> Result<()> {
     // Verifica se esiste la tabella log
     let mut exists_stmt =
         conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='log'")?;
@@ -275,6 +275,11 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Add `show_weekday` parameter to configuration file",
         up: crate::config::migrate::migrate_add_show_weekday,
     },
+    Migration {
+        version: "20251008_0012_add_field_pair_to_events",
+        description: "Add `pair` field to events table to group in/out pairs",
+        up: migrate_add_pair_to_events,
+    },
 ];
 
 pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
@@ -315,7 +320,7 @@ pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-fn migrate_to_030_rel(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_030_rel(conn: &Connection) -> Result<()> {
     // create new table log
     conn.execute_batch(
         "
@@ -371,7 +376,7 @@ fn migrate_to_030_rel(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn migrate_to_032_rel(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_032_rel(conn: &Connection) -> Result<()> {
     let mut stmt =
         conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
     let table_sql: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
@@ -479,7 +484,7 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_034_rel(conn: &Connection) -> Result<()> {
     // Create indexes to speed up queries filtering by date and position, but only if the
     // `work_sessions` table exists in the database (avoids 'no such table' errors).
     let mut stmt =
@@ -506,7 +511,7 @@ fn migrate_to_034_rel(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_035_rel(conn: &Connection) -> Result<()> {
     // Ensure config file exists and add separator_char if missing
     use serde_yaml::Value;
     let path = Config::config_file();
@@ -541,7 +546,7 @@ fn migrate_to_035_rel(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn migrate_to_036_create_events(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_036_create_events(conn: &Connection) -> Result<()> {
     // Create a flexible events table that stores in/out punches, associated position and an optional lunch value
     conn.execute_batch(
         "
@@ -572,7 +577,7 @@ fn migrate_to_036_create_events(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
-fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> Result<()> {
     // Idempotent migration: for each work_sessions row, insert corresponding in/out events
     // only if they don't already exist in events. Mark source='migration'.
     let mut select_ws = conn.prepare(
@@ -642,7 +647,7 @@ fn migrate_to_037_migrate_work_sessions_to_events(conn: &Connection) -> rusqlite
     Ok(())
 }
 
-fn migrate_to_038_add_m(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_038_add_m(conn: &Connection) -> Result<()> {
     // This migration extends the CHECK to include 'M' for Mixed; only applies if work_sessions exists
     let mut stmt =
         conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='work_sessions'")?;
@@ -684,7 +689,7 @@ fn migrate_to_038_add_m(conn: &Connection) -> rusqlite::Result<()> {
 }
 
 /// New migration: import schema_migrations into unified log and drop legacy table
-fn migrate_to_unify_schema_migrations(conn: &Connection) -> rusqlite::Result<()> {
+fn migrate_to_unify_schema_migrations(conn: &Connection) -> Result<()> {
     // Check if schema_migrations exists
     let mut stmt = conn.prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
@@ -722,6 +727,129 @@ fn migrate_to_unify_schema_migrations(conn: &Connection) -> rusqlite::Result<()>
             "Imported schema_migrations into unified log and dropped legacy table",
         )?;
         println!("✅ schema_migrations imported into log and dropped.");
+    }
+
+    Ok(())
+}
+
+fn migrate_add_pair_to_events(conn: &Connection) -> Result<()> {
+    // Add `pair` column to events table if missing
+    let mut stmt =
+        conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")?;
+    let table_sql: Option<String> = stmt.query_row([], |row| row.get(0)).optional()?;
+
+    if let Some(sql) = table_sql
+        && !sql.contains("pair INTEGER NOT NULL DEFAULT 0")
+    {
+        println!("⚠️  Adding 'pair' column to events table...");
+
+        conn.execute_batch(
+            r#"
+            PRAGMA foreign_keys=OFF;
+            BEGIN;
+
+            ALTER TABLE events RENAME TO events_old;
+
+            CREATE TABLE events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                time TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('in','out')),
+                position TEXT NOT NULL DEFAULT 'O' CHECK(position IN ('O','R','H','C','M')),
+                lunch_break INTEGER NOT NULL DEFAULT 0,
+                pair INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'cli',
+                meta TEXT DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+
+            INSERT INTO events (id, date, time, kind, position, lunch_break, source, meta, created_at)
+            SELECT id, date, time, kind, position, lunch_break, source, meta, created_at
+            FROM events_old;
+
+            DROP TABLE events_old;
+
+            CREATE INDEX IF NOT EXISTS idx_events_date_time ON events(date, time);
+            CREATE INDEX IF NOT EXISTS idx_events_date_kind ON events(date, kind);
+
+            -- Align AUTOINCREMENT sequence with max(id)
+            UPDATE sqlite_sequence
+            SET seq = (SELECT IFNULL(MAX(id), 0) FROM events)
+            WHERE name = 'events';
+
+            COMMIT;
+            PRAGMA foreign_keys=ON;
+            "#
+        )?;
+
+        println!("✅ 'pair' column added to events table.");
+
+        // Populate the 'pair' field for all existing records
+        recalc_all_pairs(conn)?;
+        println!("✅ Populated 'pair' column for existing events");
+
+        db::ttlog(
+            conn,
+            "Populated 'pair' column",
+            "migrate_add_pair_to_events",
+            "Populated 'pair' column for existing events",
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Recalculate pair numbers for a given date
+fn recalc_pairs_for_date(conn: &Connection, date: &str) -> Result<()> {
+    let mut stmt =
+        conn.prepare("SELECT id, kind, time FROM events WHERE date = ?1 ORDER BY time ASC")?;
+
+    let events = stmt
+        .query_map([date], |row| {
+            Ok((
+                row.get::<_, i32>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut current_pair = 1;
+    let mut last_in: Option<i32> = None;
+
+    for (id, kind, _time) in events {
+        if kind == "in" {
+            last_in = Some(id);
+            conn.execute(
+                "UPDATE events SET pair = ?1 WHERE id = ?2",
+                (current_pair, id),
+            )?;
+        } else if kind == "out" {
+            conn.execute(
+                "UPDATE events SET pair = ?1 WHERE id = ?2",
+                (current_pair, id),
+            )?;
+            if last_in.is_some() {
+                current_pair += 1;
+                last_in = None;
+            }
+        } else {
+            conn.execute("UPDATE events SET pair = 0 WHERE id = ?1", (id,))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Recalculate pairs for all dates in the DB
+fn recalc_all_pairs(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("SELECT DISTINCT date FROM events ORDER BY date ASC")?;
+    let dates = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for d in dates {
+        recalc_pairs_for_date(conn, &d)?;
     }
 
     Ok(())
