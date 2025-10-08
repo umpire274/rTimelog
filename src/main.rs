@@ -171,7 +171,6 @@ fn main() -> rusqlite::Result<()> {
             events,
             pairs,
             summary,
-            json,
         } => {
             let args = commands::HandleListArgs {
                 period: period.clone(),
@@ -181,7 +180,6 @@ fn main() -> rusqlite::Result<()> {
                 events: *events,
                 pairs: *pairs,
                 summary: *summary,
-                json: *json,
             };
             commands::handle_list(&args, &conn, &config)?
         }

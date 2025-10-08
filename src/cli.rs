@@ -135,13 +135,6 @@ pub enum Commands {
             help = "Show summarized per-pair rows (requires --events)"
         )]
         summary: bool,
-
-        /// Output in JSON format (applies to sessions or events depending on other flags)
-        #[arg(
-            long = "json",
-            help = "Output data as JSON instead of human-readable text"
-        )]
-        json: bool,
     },
 
     /// Create a backup copy of the database

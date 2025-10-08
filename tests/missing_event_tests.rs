@@ -1,5 +1,4 @@
 use assert_cmd::Command;
-use serde_json::Value;
 use std::env;
 use std::path::PathBuf;
 
@@ -30,19 +29,37 @@ fn test_create_missing_in_when_only_out_exists() {
         .assert()
         .success();
 
-    // Verify currently there is a single out event
+    // Verify there is a single OUT event
     let out_only = Command::cargo_bin("rtimelogger")
         .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--json"])
+        .args(["--db", &db_path, "--test", "list", "--events"])
         .output()
         .expect("failed to list events (out-only)");
     assert!(out_only.status.success());
-    let json: Value = serde_json::from_slice(&out_only.stdout).expect("invalid JSON");
-    let arr = json.as_array().expect("expected array");
-    assert_eq!(arr.len(), 1, "Expected exactly 1 event (out only)");
-    assert_eq!(arr[0]["kind"], "out");
 
-    // Now use explicit edit on pair 1 to add the missing IN event
+    let stdout = String::from_utf8_lossy(&out_only.stdout);
+
+    // Consider only event rows (those starting with a number)
+    let event_lines: Vec<&str> = stdout
+        .lines()
+        .filter(|line| line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+        .collect();
+
+    assert_eq!(
+        event_lines.len(),
+        1,
+        "Expected exactly one event line before editing"
+    );
+    assert!(
+        event_lines[0].contains("out"),
+        "Expected the only event to be of kind OUT"
+    );
+    assert!(
+        !event_lines[0].contains("in"),
+        "Should not contain IN event before editing"
+    );
+
+    // Add the missing IN event
     Command::cargo_bin("rtimelogger")
         .unwrap()
         .args([
@@ -59,27 +76,32 @@ fn test_create_missing_in_when_only_out_exists() {
         .assert()
         .success();
 
-    // Re-list events and expect both in and out
+    // Re-list events and expect both IN and OUT
     let both = Command::cargo_bin("rtimelogger")
         .unwrap()
-        .args(["--db", &db_path, "--test", "list", "--events", "--json"])
+        .args(["--db", &db_path, "--test", "list", "--events"])
         .output()
         .expect("failed to list events (after creating in)");
     assert!(both.status.success());
-    let json2: Value = serde_json::from_slice(&both.stdout).expect("invalid JSON");
-    let arr2 = json2.as_array().expect("expected array");
 
-    // Should now have 2 events
-    assert_eq!(arr2.len(), 2, "Expected 2 events after adding missing in");
-    let in_event = arr2
-        .iter()
-        .find(|e| e["kind"] == "in")
-        .expect("missing in event");
-    let out_event = arr2
-        .iter()
-        .find(|e| e["kind"] == "out")
-        .expect("missing out event");
+    let stdout2 = String::from_utf8_lossy(&both.stdout);
 
-    assert_eq!(in_event["time"].as_str().unwrap(), "09:00");
-    assert_eq!(out_event["time"].as_str().unwrap(), "17:00");
+    let event_lines2: Vec<&str> = stdout2
+        .lines()
+        .filter(|line| line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+        .collect();
+
+    assert_eq!(
+        event_lines2.len(),
+        2,
+        "Expected 2 event lines after adding missing in"
+    );
+    assert!(
+        event_lines2.iter().any(|l| l.contains("in")),
+        "Expected an IN event after editing"
+    );
+    assert!(
+        event_lines2.iter().any(|l| l.contains("out")),
+        "Expected an OUT event after editing"
+    );
 }

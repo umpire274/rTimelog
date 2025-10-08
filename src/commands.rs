@@ -613,7 +613,6 @@ pub struct HandleListArgs {
     pub events: bool,
     pub pairs: Option<usize>,
     pub summary: bool,
-    pub json: bool,
 }
 
 /// Compatibile: wrapper che mantiene la firma esistente e chiama la versione con highlight = None
@@ -637,10 +636,6 @@ pub fn handle_list(
         // If user supplied --now --events but not --details, map to details for convenience
         if args.events && !args.details {
             let events_today = db::list_events_by_date(conn, &today)?;
-            if args.json {
-                println!("{}", serde_json::to_string_pretty(&events_today).unwrap());
-                return Ok(());
-            }
             println!(
                 "ℹ️  '--now --events' rilevato: usa '--now --details'. Mostro i dettagli degli eventi di oggi."
             );
@@ -655,10 +650,6 @@ pub fn handle_list(
         return if args.details {
             // Show today's events (details)
             let events_today = db::list_events_by_date(conn, &today)?;
-            if args.json {
-                println!("{}", serde_json::to_string_pretty(&events_today).unwrap());
-                return Ok(());
-            }
             if events_today.is_empty() {
                 println!("No events for today.");
                 return Ok(());
@@ -668,10 +659,6 @@ pub fn handle_list(
         } else {
             // Default: show today's work_sessions (aggregated)
             let sessions = db::list_sessions_by_date(conn, &today)?;
-            if args.json {
-                println!("{}", serde_json::to_string_pretty(&sessions).unwrap());
-                return Ok(());
-            }
             if sessions.is_empty() {
                 println!("No record for today.");
                 return Ok(());
@@ -821,11 +808,7 @@ pub fn handle_list(
         let events_all =
             db::list_events_filtered(conn, args.period.as_deref(), args.pos.as_deref())?;
         if events_all.is_empty() {
-            if args.json {
-                println!("[]");
-            } else {
-                println!("No events recorded.");
-            }
+            println!("No events recorded.");
             return Ok(());
         }
         // Calcolo pair/unmatched una sola volta
@@ -836,10 +819,6 @@ pub fn handle_list(
             if let Some(pf) = args.pairs {
                 summaries.retain(|r| r.pair == pf);
             }
-            if args.json {
-                println!("{}", serde_json::to_string_pretty(&summaries).unwrap());
-                return Ok(());
-            }
             print_events_summary(&summaries, "Event pairs summary");
             return Ok(());
         }
@@ -849,23 +828,12 @@ pub fn handle_list(
         } else {
             enriched
         };
-        if args.json {
-            println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
-            return Ok(());
-        }
         let plain_events: Vec<db::Event> = filtered.iter().map(|ewp| ewp.event.clone()).collect();
         let pair_map: Vec<(i32, usize, bool)> = filtered
             .iter()
             .map(|ewp| (ewp.event.id, ewp.pair, ewp.unmatched))
             .collect();
         print_events_table_with_pairs(&plain_events, &pair_map, "All events", args.pairs);
-        return Ok(());
-    }
-
-    if args.json {
-        // sessions listing in JSON (with filters if provided)
-        let sessions = db::list_sessions(conn, args.period.as_deref(), args.pos.as_deref())?;
-        println!("{}", serde_json::to_string_pretty(&sessions).unwrap());
         return Ok(());
     }
 
