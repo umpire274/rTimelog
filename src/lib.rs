@@ -14,5 +14,6 @@ pub mod cli;
 pub mod config;
 pub mod db;
 pub mod events;
+pub mod export;
 pub mod logic;
 pub mod utils;

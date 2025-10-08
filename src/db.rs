@@ -9,10 +9,11 @@ pub use migrate::run_pending_migrations;
 pub struct WorkSession {
     pub id: i32,
     pub date: String,
-    pub position: String, // "A" (office) or "R" (remote)
+    pub position: String, // O,R,H,C,M
     pub start: String,
     pub lunch: i32,
     pub end: String,
+    pub work_duration: Option<i32>, // minuti netti: (end-start)-lunch
 }
 
 /// Represents a single punch event (in/out)
@@ -22,35 +23,65 @@ pub struct Event {
     pub date: String,
     pub time: String,     // HH:MM
     pub kind: String,     // "in" or "out"
-    pub position: String, // O,R,H,C
+    pub position: String, // O,R,H,C,M
     pub lunch_break: i32, // minutes, typically set on out
+    pub pair: i32,
     pub source: String,
     pub meta: String,
     pub created_at: String, // ISO timestamp
 }
 
-fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
+fn hhmm_to_minutes(s: &str) -> Option<i32> {
+    let mut it = s.split(':');
+    let h = it.next()?.parse::<i32>().ok()?;
+    let m = it.next()?.parse::<i32>().ok()?;
+    Some(h * 60 + m)
+}
+
+fn calculate_work_duration(start: &str, end: &str, lunch: i32) -> Option<i32> {
+    let sm = hhmm_to_minutes(start)?;
+    let em = hhmm_to_minutes(end)?;
+    if em >= sm {
+        Some(((em - sm) - lunch).max(0))
+    } else {
+        // opzionale: gestisci overnight
+        Some((((em + 24 * 60) - sm) - lunch).max(0))
+    }
+}
+
+pub fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
+    let start: Option<String> = row.get("start_time")?;
+    let end: Option<String> = row.get("end_time")?;
+    let lunch: i32 = row.get::<_, Option<i32>>("lunch_break")?.unwrap_or(0);
+    let work_duration = calculate_work_duration(
+        start.clone().unwrap().as_str(),
+        end.clone().unwrap().as_str(),
+        lunch,
+    );
+
     Ok(WorkSession {
-        id: row.get(0)?,
-        date: row.get(1)?,
-        position: row.get(2)?,
-        start: row.get(3)?,
-        lunch: row.get(4)?,
-        end: row.get(5)?,
+        id: row.get("id")?,
+        date: row.get("date")?,
+        position: row.get("position")?,
+        start: start.unwrap_or_default(),
+        lunch,
+        end: end.unwrap_or_default(),
+        work_duration,
     })
 }
 
-fn row_to_event(row: &rusqlite::Row) -> Result<Event> {
+pub(crate) fn row_to_event(row: &rusqlite::Row) -> Result<Event> {
     Ok(Event {
-        id: row.get(0)?,
-        date: row.get(1)?,
-        time: row.get(2)?,
-        kind: row.get(3)?,
-        position: row.get(4)?,
-        lunch_break: row.get(5)?,
-        source: row.get(6)?,
-        meta: row.get(7)?,
-        created_at: row.get(8)?,
+        id: row.get("id")?,
+        date: row.get("date")?,
+        time: row.get("time")?,
+        kind: row.get("kind")?,
+        position: row.get("position")?,
+        lunch_break: row.get("lunch_break")?,
+        pair: row.get("pair")?,
+        source: row.get("source")?,
+        meta: row.get("meta")?,
+        created_at: row.get("created_at")?,
     })
 }
 
@@ -118,6 +149,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             kind TEXT NOT NULL CHECK (kind IN ('in','out')),
             position TEXT NOT NULL CHECK (position IN ('O','R','H','C','M')),
             lunch_break INTEGER NOT NULL DEFAULT 0, -- minutes, typically set on out
+            pair INTEGER DEFAULT 0,
             source TEXT NOT NULL,
             meta TEXT,
             created_at TEXT NOT NULL     -- ISO 8601 timestamp
@@ -309,7 +341,10 @@ pub fn list_sessions_by_date(conn: &Connection, date: &str) -> Result<Vec<WorkSe
 /// List events for a specific date (ordered by time asc)
 pub fn list_events_by_date(conn: &Connection, date: &str) -> Result<Vec<Event>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 ORDER BY time ASC",
+        "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+        FROM events \
+        WHERE date = ?1 \
+        ORDER BY time ASC",
     )?;
     let rows = stmt.query_map([date], row_to_event)?;
 
@@ -319,7 +354,9 @@ pub fn list_events_by_date(conn: &Connection, date: &str) -> Result<Vec<Event>> 
 /// List all events in the database ordered by date and time
 pub fn list_events(conn: &Connection) -> Result<Vec<Event>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events ORDER BY date ASC, time ASC",
+        "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+        FROM events \
+        ORDER BY date ASC, time ASC",
     )?;
     let rows = stmt.query_map([], row_to_event)?;
 
@@ -332,8 +369,7 @@ pub fn list_events_filtered(
     period: Option<&str>,
     pos: Option<&str>,
 ) -> Result<Vec<Event>> {
-    let base_query =
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events";
+    let base_query = "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at FROM events";
     let (mut query, params) = build_filtered_query(base_query, period, pos)?;
 
     query.push_str(" ORDER BY date ASC, time ASC");
@@ -347,7 +383,11 @@ pub fn list_events_filtered(
 /// Find last out event before a given time on the same date
 pub fn last_out_before(conn: &Connection, date: &str, time: &str) -> Result<Option<Event>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 AND kind = 'out' AND time < ?2 ORDER BY time DESC LIMIT 1",
+        "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+        FROM events \
+        WHERE date = ?1 AND kind = 'out' AND time < ?2 \
+        ORDER BY time DESC \
+        LIMIT 1",
     )?;
     match stmt.query_row([date, time], row_to_event) {
         Ok(ev) => Ok(Some(ev)),
@@ -576,6 +616,11 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
             pending_in = Some(e);
         } else if e.kind == "out" {
             if let Some(in_ev) = pending_in.take() {
+                let work_duration = calculate_work_duration(
+                    in_ev.clone().time.as_str(),
+                    e.clone().time.as_str(),
+                    e.lunch_break,
+                );
                 // matched pair
                 let ws = WorkSession {
                     id: e.id, // use out event id as session id
@@ -584,9 +629,12 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
                     start: in_ev.time.clone(),
                     lunch: e.lunch_break,
                     end: e.time.clone(),
+                    work_duration,
                 };
                 sessions.push(ws);
             } else {
+                let work_duration =
+                    calculate_work_duration("", e.clone().time.as_str(), e.lunch_break);
                 // out without in -> partial session
                 let ws = WorkSession {
                     id: e.id,
@@ -595,6 +643,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
                     start: "".to_string(),
                     lunch: e.lunch_break,
                     end: e.time.clone(),
+                    work_duration,
                 };
                 sessions.push(ws);
             }
@@ -603,6 +652,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
 
     // any remaining pending_in -> incomplete session
     if let Some(in_ev) = pending_in {
+        let work_duration = calculate_work_duration(in_ev.clone().time.as_str(), "", 0);
         let ws = WorkSession {
             id: in_ev.id,
             date: date.to_string(),
@@ -610,6 +660,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
             start: in_ev.time.clone(),
             lunch: 0,
             end: "".to_string(),
+            work_duration,
         };
         sessions.push(ws);
     }
@@ -645,7 +696,10 @@ pub fn delete_events_by_ids_and_recompute_sessions(
     let mut remaining: Vec<Event> = Vec::new();
     {
         let mut sel = tx.prepare(
-            "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 ORDER BY time ASC",
+            "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+            FROM events \
+            WHERE date = ?1 \
+            ORDER BY time ASC",
         )?;
         let remaining_rows = sel.query_map([date], row_to_event)?;
         for r in remaining_rows {

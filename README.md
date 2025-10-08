@@ -12,18 +12,13 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in 0.5.0
+## What's new in 0.5.1
 
-- Moved CLI definition (`Cli` and `Commands`) from `main.rs` into a dedicated `cli.rs` module.
-- New configuration option `show_weekday` to control weekday display in `list` command (`None`, `Short`, `Medium`,
-  `Long`).
-- Weekday is now displayed next to session dates in `list` output.
-- New `backup` command with `--file` to copy the database.
-- Added `--compress` flag for backup:
-    - On Windows → produces `.zip`
-    - On Linux/macOS → produces `.tar.gz`
-- Backup operations are logged internally.
-- Corrected calculation of expected end time (lunch rules applied).
+- Fixed export parameter binding and implemented proper `--range` support for exports.
+  The export command now accepts CSV and JSON formats and correctly filters by date ranges.
+- Refactored `src/export.rs` to build SQL queries with owned parameters, avoiding lifetime issues and ensuring
+  prepared statements receive the date bounds.
+- Added a comprehensive export test suite and shared test helpers (`tests/common.rs`) to guard against regressions.
 
 ---
 
@@ -278,6 +273,32 @@ rtimelogger backup --file "/path/to/backup.sqlite" --compress
 
 ---
 
+### Export data
+
+You can export recorded events or aggregated work sessions to CSV or JSON. The `export` subcommand supports
+date-range filtering with multiple formats and writes to an absolute output path.
+
+Examples:
+
+```bash
+# Export all events as CSV to an absolute path
+rtimelogger export --format csv --file /absolute/path/events.csv --events
+
+# Export sessions as JSON for September 2025
+rtimelogger export --format json --file /absolute/path/sessions.json --sessions --range 2025-09
+
+# Export events for a specific day range using brace syntax
+rtimelogger export --format csv --file /absolute/path/sep28.csv --events --range 2025-02-{28..28}
+```
+
+Notes:
+
+- `--range` supports: `YYYY` (whole year), `YYYY-MM` (month), and `YYYY-MM-{dd..dd}` (day range inside a month).
+- The output `--file` must be an absolute path. If the file exists the CLI will prompt for confirmation unless you
+  pass `--force` to overwrite without prompting.
+
+---
+
 ## Event mode – behavior details
 
 - **Pair numbering** restarts each date.
@@ -348,7 +369,7 @@ Include coverage for: sessions CRUD, events pairing, summary, JSON, holidays, mi
 
 ```bash
 git clone https://github.com/umpire274/rTimelogger.git
-cd rTimelogger
+cd rtimelogger
 cargo build --release
 ```
 

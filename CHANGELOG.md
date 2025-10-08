@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.5.1] - 2025-10-09
+
+### Added
+
+- Comprehensive export test suite covering CSV/JSON outputs for `--events` and `--sessions`.
+  Tests include range filtering (including brace day-range syntax), empty dataset behavior, overwrite/cancel flows,
+  CSV structure checks and a performance smoke test.
+- Shared test helpers in `tests/common.rs` (`setup_test_db`, `temp_out`, `init_db_with_data`, `populate_many_sessions`) to
+  reduce duplication across tests and simplify integration test setup.
+
+### Changed
+
+- Implemented `--range` handling for `export` (supports `YYYY`, `YYYY-MM`, and `YYYY-MM-{dd..dd}` brace syntax) and
+  applied it to both `events` and `work_sessions` exports.
+- Refactored `src/export.rs`:
+  - Extracted helper `build_query_with_range` to build SQL + owned parameters.
+  - Pass owned date parameters to `stmt.query_map(...)` to ensure correct binding and lifetimes.
+- Moved test helpers out of the library (`src/test_common.rs`) into `tests/common.rs` and updated tests to use the
+  shared helpers.
+
+### Fixed
+
+- Fixed an export bug where SQL range parameters were not passed to `query_map` (caused incorrect/ignored ranges and
+  lifetime errors E0597). Exports now correctly filter by date when `--range` is provided.
+- Resolved Clippy warnings across the codebase; added a small allow for `dead_code` in test helpers where appropriate.
+
+### Notes
+
+- The `--range` option is now implemented and exercised by tests; removed the previous note stating it was a stub.
+- Consider adding CSV headers in a follow-up if explicit headings are desired for exported CSV files.
+
+---
+
 ## [0.5.0] - 2025-10-08
 
 ### Added
@@ -69,7 +102,7 @@
 
 ---
 
-# [0.4.1] - 2025-10-03
+## [0.4.1] - 2025-10-03
 
 ### Added
 
@@ -83,7 +116,6 @@
     - Removed duplicated code in `commands.rs` and consolidated the helper usage.
 - Presentation improvement: in `list --events --summary` the Duration field is now displayed in a human-friendly "Xh Ym"
   format instead of raw minutes (display-only change).
-- Updated integration tests to cover the new event creation logic.
 
 ### Fixed
 
@@ -91,7 +123,7 @@
 
 ---
 
-# [0.4.0] - 2025-10-02
+## [0.4.0] - 2025-10-02
 
 ### Added
 
@@ -115,7 +147,7 @@
 
 ### Changed
 
-- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`, summary/table
+- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`, `summary/table`
   printers).
 - Improved output alignment for event and summary tables.
 - Internal minor cleanups (pattern matching adjustments for 2024 edition, separator printing, warning removal).
