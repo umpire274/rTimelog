@@ -1,6 +1,6 @@
 use clap::Parser;
 use rtimelogger::config::Config;
-use rtimelogger::db;
+use rtimelogger::{db, export};
 use rusqlite::Connection;
 
 mod commands;
@@ -192,6 +192,11 @@ fn main() -> rusqlite::Result<()> {
             if let Err(e) = commands::handle_backup(&config, file, compress) {
                 eprintln!("❌ Backup failed: {}", e);
             }
+        }
+        Commands::Export { .. } => {
+            if let Err(e) = export::handle_export(&cli.command, &conn) {
+                eprintln!("❌ Export failed: {}", e);
+            };
         }
     }
 

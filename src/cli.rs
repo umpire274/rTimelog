@@ -147,4 +147,31 @@ pub enum Commands {
         #[arg(long)]
         compress: bool,
     },
+
+    /// Export work session data in various formats
+    Export {
+        /// Export format: csv, json
+        #[arg(long, value_name = "FORMAT", default_value = "csv")]
+        format: String,
+
+        /// Output file path (absolute path required)
+        #[arg(long, value_name = "FILE")]
+        file: String,
+
+        /// Date range for export (e.g., "2025-01" for January 2025, "2025-01:2025-03" for Jan-Mar 2025)
+        #[arg(long, value_name = "RANGE")]
+        range: Option<String>,
+
+        /// Export EVENTS (from `events` table)
+        #[arg(long, conflicts_with = "sessions")]
+        events: bool,
+
+        /// Export SESSIONS (from `work_sessions` table)
+        #[arg(long, conflicts_with = "events")]
+        sessions: bool,
+
+        /// Overwrite output file without confirmation
+        #[arg(long, short = 'f')]
+        force: bool,
+    },
 }
