@@ -43,16 +43,16 @@ fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
 
 fn row_to_event(row: &rusqlite::Row) -> Result<Event> {
     Ok(Event {
-        id: row.get(0)?,
-        date: row.get(1)?,
-        time: row.get(2)?,
-        kind: row.get(3)?,
-        position: row.get(4)?,
-        lunch_break: row.get(5)?,
-        pair: row.get(6)?,
-        source: row.get(7)?,
-        meta: row.get(8)?,
-        created_at: row.get(9)?,
+        id: row.get("id")?,
+        date: row.get("date")?,
+        time: row.get("time")?,
+        kind: row.get("kind")?,
+        position: row.get("position")?,
+        lunch_break: row.get("lunch_break")?,
+        pair: row.get("pair")?,
+        source: row.get("source")?,
+        meta: row.get("meta")?,
+        created_at: row.get("created_at")?,
     })
 }
 
@@ -312,7 +312,10 @@ pub fn list_sessions_by_date(conn: &Connection, date: &str) -> Result<Vec<WorkSe
 /// List events for a specific date (ordered by time asc)
 pub fn list_events_by_date(conn: &Connection, date: &str) -> Result<Vec<Event>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 ORDER BY time ASC",
+        "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+        FROM events \
+        WHERE date = ?1 \
+        ORDER BY time ASC",
     )?;
     let rows = stmt.query_map([date], row_to_event)?;
 
@@ -322,7 +325,9 @@ pub fn list_events_by_date(conn: &Connection, date: &str) -> Result<Vec<Event>> 
 /// List all events in the database ordered by date and time
 pub fn list_events(conn: &Connection) -> Result<Vec<Event>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events ORDER BY date ASC, time ASC",
+        "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+        FROM events \
+        ORDER BY date ASC, time ASC",
     )?;
     let rows = stmt.query_map([], row_to_event)?;
 
@@ -335,8 +340,7 @@ pub fn list_events_filtered(
     period: Option<&str>,
     pos: Option<&str>,
 ) -> Result<Vec<Event>> {
-    let base_query =
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events";
+    let base_query = "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at FROM events";
     let (mut query, params) = build_filtered_query(base_query, period, pos)?;
 
     query.push_str(" ORDER BY date ASC, time ASC");
@@ -350,7 +354,11 @@ pub fn list_events_filtered(
 /// Find last out event before a given time on the same date
 pub fn last_out_before(conn: &Connection, date: &str, time: &str) -> Result<Option<Event>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 AND kind = 'out' AND time < ?2 ORDER BY time DESC LIMIT 1",
+        "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+        FROM events \
+        WHERE date = ?1 AND kind = 'out' AND time < ?2 \
+        ORDER BY time DESC \
+        LIMIT 1",
     )?;
     match stmt.query_row([date, time], row_to_event) {
         Ok(ev) => Ok(Some(ev)),
@@ -648,7 +656,10 @@ pub fn delete_events_by_ids_and_recompute_sessions(
     let mut remaining: Vec<Event> = Vec::new();
     {
         let mut sel = tx.prepare(
-            "SELECT id, date, time, kind, position, lunch_break, source, meta, created_at FROM events WHERE date = ?1 ORDER BY time ASC",
+            "SELECT id, date, time, kind, position, lunch_break, pair, source, meta, created_at \
+            FROM events \
+            WHERE date = ?1 \
+            ORDER BY time ASC",
         )?;
         let remaining_rows = sel.query_map([date], row_to_event)?;
         for r in remaining_rows {
