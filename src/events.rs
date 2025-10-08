@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::db;
+use crate::db::row_to_event;
 use rusqlite::{Connection, params};
 
 /// Crea un evento mancante (in/out) e restituisce l'evento creato.
@@ -60,7 +61,7 @@ fn get_event_by_id(conn: &Connection, id: i64) -> rusqlite::Result<db::Event> {
         WHERE id = ?1
         "#,
         [id],
-        map_event_row,
+        row_to_event,
     )
 }
 
@@ -82,27 +83,11 @@ fn get_event_by_uniq(
 
     let mut rows = stmt.query(params![date, time_val, kind])?;
     if let Some(row) = rows.next()? {
-        let ev = map_event_row(row)?;
+        let ev = row_to_event(row)?;
         Ok(Some(ev))
     } else {
         Ok(None)
     }
-}
-
-/// Mapping sicuro: legge sempre per **nome colonna**.
-fn map_event_row(row: &rusqlite::Row) -> rusqlite::Result<db::Event> {
-    Ok(db::Event {
-        id: row.get("id")?,
-        date: row.get("date")?,
-        time: row.get("time")?,
-        kind: row.get("kind")?,
-        position: row.get("position")?,
-        lunch_break: row.get("lunch_break")?,
-        pair: row.get("pair")?,
-        source: row.get("source")?,
-        meta: row.get("meta")?,
-        created_at: row.get("created_at")?,
-    })
 }
 
 #[cfg(test)]
