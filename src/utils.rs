@@ -110,10 +110,33 @@ pub fn parse_work_duration_to_minutes(s: &str) -> i64 {
 }
 
 /// Convert minutes into a "HH:MM" formatted string
-pub fn mins2hhmm(minutes: i32) -> String {
+pub fn mins2hhmm(minutes: i32, splitted: Option<bool>) -> Result<String, (String, String)> {
+    // default = false
+    let splitted = splitted.unwrap_or(false);
+
     let hours = minutes / 60;
     let mins = minutes % 60;
-    format!("{:02}:{:02}", hours, mins)
+
+    if splitted {
+        // ritorna tuple (HH, MM) come Err per distinguere
+        Err((format!("{:02}", hours), format!("{:02}", mins)))
+    } else {
+        // ritorna stringa "HH:MM"
+        Ok(format!("{:02}:{:02}", hours, mins))
+    }
+}
+
+/// Converts total minutes to a human-readable (HH, MM) tuple.
+/// Always returns positive values (absolute duration).
+pub fn mins2readable(minutes: i32) -> (String, String) {
+    let abs_minutes = minutes.abs();
+    match mins2hhmm(abs_minutes, Some(true)) {
+        Err((hh, mm)) => (hh, mm),
+        Ok(s) => {
+            let (hh, mm) = s.split_once(':').unwrap_or(("00", "00"));
+            (hh.to_string(), mm.to_string())
+        }
+    }
 }
 
 /// Generate a separator string with `width` repetitions of the given `ch`,

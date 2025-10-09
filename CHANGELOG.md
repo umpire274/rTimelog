@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.2] - 2025-10-09
+
+### Changed
+
+- Refactored time formatting utilities:
+    - Updated `mins2hhmm()` to support both combined ("HH:MM") and split ("HH","MM") output via an optional parameter.
+    - Added new helper functions `mins2readable()` for consistent human-readable duration formatting (e.g., `07h 45m`).
+    - Replaced duplicated inline conversion logic with unified helper calls.
+- Updated logic and unit tests to align with the new time formatting behavior.
+
+### Fixed
+
+- Corrected formatting of negative durations to display a single minus sign (e.g., `-01h 25m` instead of `-00h -25m`).
+- Resolved minor inconsistencies in duration calculation and string conversion.
+
+---
+
 ## [0.5.1] - 2025-10-09
 
 ### Added
@@ -7,7 +24,8 @@
 - Comprehensive export test suite covering CSV/JSON outputs for `--events` and `--sessions`.
   Tests include range filtering (including brace day-range syntax), empty dataset behavior, overwrite/cancel flows,
   CSV structure checks and a performance smoke test.
-- Shared test helpers in `tests/common.rs` (`setup_test_db`, `temp_out`, `init_db_with_data`, `populate_many_sessions`) to
+- Shared test helpers in `tests/common.rs` (`setup_test_db`, `temp_out`, `init_db_with_data`, `populate_many_sessions`)
+  to
   reduce duplication across tests and simplify integration test setup.
 
 ### Changed
@@ -15,8 +33,8 @@
 - Implemented `--range` handling for `export` (supports `YYYY`, `YYYY-MM`, and `YYYY-MM-{dd..dd}` brace syntax) and
   applied it to both `events` and `work_sessions` exports.
 - Refactored `src/export.rs`:
-  - Extracted helper `build_query_with_range` to build SQL + owned parameters.
-  - Pass owned date parameters to `stmt.query_map(...)` to ensure correct binding and lifetimes.
+    - Extracted helper `build_query_with_range` to build SQL + owned parameters.
+    - Pass owned date parameters to `stmt.query_map(...)` to ensure correct binding and lifetimes.
 - Moved test helpers out of the library (`src/test_common.rs`) into `tests/common.rs` and updated tests to use the
   shared helpers.
 
@@ -147,7 +165,8 @@
 
 ### Changed
 
-- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`, `summary/table`
+- Refactored event printing logic into helper functions (`compute_event_pairs`, `compute_event_summaries`,
+  `summary/table`
   printers).
 - Improved output alignment for event and summary tables.
 - Internal minor cleanups (pattern matching adjustments for 2024 edition, separator printing, warning removal).

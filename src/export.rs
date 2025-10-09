@@ -1,6 +1,6 @@
 use crate::cli::Commands;
 use crate::db;
-use crate::utils::mins2hhmm;
+use crate::utils::mins2readable;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::error::Error;
@@ -171,7 +171,10 @@ fn load_sessions(
             start: ws.start,
             lunch_break: ws.lunch,
             end: ws.end,
-            work_duration: ws.work_duration.map(mins2hhmm),
+            work_duration: ws.work_duration.map(|m| {
+                let (hh, mm) = mins2readable(m);
+                format!("{}h {}m", hh, mm)
+            }),
         })
     })?;
 
