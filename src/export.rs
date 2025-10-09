@@ -1,5 +1,6 @@
 use crate::cli::Commands;
 use crate::db;
+use crate::pdf_manager::PdfManager;
 use crate::utils::mins2readable;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use rusqlite::Connection;
@@ -13,7 +14,7 @@ use std::io::Write;
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 struct EventExport {
     id: i32,
     date: String,
@@ -25,7 +26,7 @@ struct EventExport {
     source: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 struct SessionExport {
     id: i32,
     date: String,
@@ -36,16 +37,79 @@ struct SessionExport {
     work_duration: Option<String>,
 }
 
-fn export_to_format<T: serde::Serialize>(
+fn get_headers(export_events: bool) -> Vec<&'static str> {
+    if export_events {
+        vec![
+            "id",
+            "date",
+            "time",
+            "kind",
+            "position",
+            "lunch_break",
+            "pair",
+            "source",
+        ]
+    } else {
+        vec![
+            "id",
+            "date",
+            "position",
+            "start_time",
+            "lunch_break",
+            "end_time",
+            "work_duration",
+        ]
+    }
+}
+
+/// Converte eventi in &[Vec<String>]
+fn events_to_table(events: &[EventExport]) -> Vec<Vec<String>> {
+    events
+        .iter()
+        .map(|e| {
+            vec![
+                e.id.to_string(),
+                e.date.clone(),
+                e.time.clone(),
+                e.kind.clone(),
+                e.position.clone(),
+                e.lunch_break.to_string(),
+                e.pair.to_string(),
+                e.source.clone(),
+            ]
+        })
+        .collect()
+}
+
+/// Converte sessioni in &[Vec<String>]
+fn sessions_to_table(sessions: &[SessionExport]) -> Vec<Vec<String>> {
+    sessions
+        .iter()
+        .map(|s| {
+            vec![
+                s.id.to_string(),
+                s.date.clone(),
+                s.position.clone(),
+                s.start.clone(),
+                s.lunch_break.to_string(),
+                s.end.clone(),
+                s.work_duration.clone().unwrap_or_default(),
+            ]
+        })
+        .collect()
+}
+
+fn export_to_format<T: serde::Serialize + std::fmt::Debug>(
     fmt: &str,
     data: &[T],
     path: &Path,
+    export_events: bool,
 ) -> Result<(), Box<dyn Error>> {
     match fmt {
         "csv" => export_csv(data, path)?,
         "json" => export_json(data, path)?,
         "xlsx" => export_xlsx(data, path)?,
-        "pdf" => export_pdf(data, path)?,
+        "pdf" => export_pdf(data, path, export_events)?,
         _ => unreachable!(),
     }
     Ok(())
@@ -90,10 +154,10 @@ pub fn handle_export(cmd: &Commands, conn: &Connection) -> Result<(), Box<dyn Er
 
         if export_events {
             let data = load_events(conn, date_bounds)?;
-            export_to_format(&fmt, &data, path)?;
+            export_to_format(&fmt, &data, path, export_events)?;
         } else {
             let data = load_sessions(conn, date_bounds)?;
-            export_to_format(&fmt, &data, path)?;
+            export_to_format(&fmt, &data, path, export_events)?;
         }
     }
 
@@ -287,7 +351,7 @@ pub fn export_xlsx<T: Serialize>(data: &[T], path: &Path) -> Result<(), Box<dyn 
     // the compiler reports the method is absent.
     let _ = worksheet.set_freeze_panes(1, 0);
 
-    // Track column widths (approximate, measured with unicode width)
+    // Track column widths (approximate, measured with Unicode width)
     let mut col_widths: Vec<usize> = headers
         .iter()
         .map(|h| UnicodeWidthStr::width(h.as_str()))
@@ -383,10 +447,29 @@ pub fn export_xlsx<T: Serialize>(data: &[T], path: &Path) -> Result<(), Box<dyn 
     Ok(())
 }
 
-pub fn export_pdf<T: serde::Serialize>(_data: &[T], path: &Path) -> Result<(), Box<dyn Error>> {
-    println!("📄 Exporting to PDF: {}", path.display());
-    let mut file = File::create(path)?;
-    writeln!(file, "PDF export placeholder")?;
+pub fn export_pdf<T: Serialize>(
+    data: &[T],
+    path: &Path,
+    export_events: bool,
+) -> Result<(), Box<dyn Error>> {
+    println!("📘 Exporting to PDF: {}", path.display());
+
+    let headers = get_headers(export_events);
+    let data_vec = if export_events {
+        events_to_table(unsafe {
+            // Safety: we ensure T is EventExport when export_events is true
+            &*(data as *const [T] as *const [EventExport])
+        })
+    } else {
+        sessions_to_table(unsafe {
+            // Safety: we ensure T is SessionExport when export_events is false
+            &*(data as *const [T] as *const [SessionExport])
+        })
+    };
+    let mut pdf = PdfManager::new();
+    pdf.write_table(&headers, &data_vec); // 'data' deve essere &[Vec<String>]
+    pdf.save(path)?;
+
     println!("✅ PDF export completed.");
     Ok(())
 }

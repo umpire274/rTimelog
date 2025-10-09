@@ -5,15 +5,21 @@
 ### Changed
 
 - Refactored time formatting utilities:
-    - Updated `mins2hhmm()` to support both combined ("HH:MM") and split ("HH","MM") output via an optional parameter.
-    - Added new helper functions `mins2readable()` for consistent human-readable duration formatting (e.g., `07h 45m`).
-    - Replaced duplicated inline conversion logic with unified helper calls.
+  - Updated `mins2hhmm()` to support both combined ("HH:MM") and split ("HH","MM") output via an optional parameter.
+  - Added new helper functions `mins2readable()` for consistent human-readable duration formatting (e.g., `07h 45m`).
+  - Replaced duplicated inline conversion logic with unified helper calls.
 - Updated logic and unit tests to align with the new time formatting behavior.
+- Enhanced XLSX export:
+  - Introduced tabular/graphical layout for better readability.
+  - First row is now frozen as header.
 
 ### Fixed
 
 - Corrected formatting of negative durations to display a single minus sign (e.g., `-01h 25m` instead of `-00h -25m`).
 - Resolved minor inconsistencies in duration calculation and string conversion.
+- Updated XLSX export to align with rust_xlsxwriter v0.90.2 API changes:
+  - Replaced `freeze_panes` with `set_freeze_panes`.
+  - Adjusted column arguments in `write_with_format` and `set_column_width` from `u32` to `u16`.
 
 ---
 

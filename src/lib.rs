@@ -16,4 +16,5 @@ pub mod db;
 pub mod events;
 pub mod export;
 pub mod logic;
+pub mod pdf_manager;
 pub mod utils;
