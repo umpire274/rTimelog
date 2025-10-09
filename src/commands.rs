@@ -684,7 +684,7 @@ pub fn handle_list(
                         logic::calculate_expected_exit(&s.start, work_minutes, s.lunch, config);
                     let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
                     let lunch_str = if s.lunch > 0 {
-                        mins2hhmm(s.lunch)
+                        mins2hhmm(s.lunch, None).unwrap_or_default()
                     } else {
                         "-".to_string()
                     };
@@ -751,7 +751,7 @@ pub fn handle_list(
                             pos_color,
                             pos_string,
                             s.start,
-                            mins2hhmm(effective_lunch),
+                            mins2hhmm(effective_lunch, None).unwrap_or_default(),
                             s.end,
                             expected.format("%H:%M"),
                             color_code,
@@ -781,7 +781,7 @@ pub fn handle_list(
                             pos_color,
                             pos_string,
                             s.start,
-                            mins2hhmm(s.lunch),
+                            mins2hhmm(s.lunch, None).unwrap_or_default(),
                             s.end,
                             expected.format("%H:%M"),
                             color_code,
@@ -798,7 +798,14 @@ pub fn handle_list(
                     );
                 }
             }
-            println!("\nSummary surplus: {}m", total_surplus);
+            let (hh, mm) = utils::mins2readable(total_surplus as i32);
+            let formatted_total = format!(
+                "{}{}h {}m",
+                if total_surplus < 0 { "-" } else { "" },
+                hh,
+                mm
+            );
+            println!("\nSummary surplus: {}", formatted_total);
             Ok(())
         };
     }
@@ -926,7 +933,7 @@ pub fn handle_list_with_highlight(
 
             let lunch_color = if s.lunch > 0 { "\x1b[0m" } else { "\x1b[90m" };
             let lunch_str = if s.lunch > 0 {
-                mins2hhmm(s.lunch)
+                mins2hhmm(s.lunch, None).unwrap_or_default()
             } else {
                 "-".to_string()
             };
@@ -1001,7 +1008,7 @@ pub fn handle_list_with_highlight(
                 };
 
                 let lunch_str = if effective_lunch > 0 {
-                    mins2hhmm(effective_lunch)
+                    mins2hhmm(effective_lunch, None).unwrap_or_default()
                 } else {
                     "-".to_string()
                 };
@@ -1045,7 +1052,7 @@ pub fn handle_list_with_highlight(
             }
         } else {
             let lunch_str = if s.lunch > 0 {
-                mins2hhmm(s.lunch)
+                mins2hhmm(s.lunch, None).unwrap_or_default()
             } else {
                 "-".to_string()
             };
@@ -1081,12 +1088,18 @@ pub fn handle_list_with_highlight(
                 "\x1b[32m" // verde
             };
 
-            let formatted_total = format!("{:+}", total_surplus);
+            let (hh, mm) = utils::mins2readable(total_surplus as i32);
+            let formatted_total = format!(
+                "{}{}h {}m",
+                if total_surplus < 0 { "-" } else { "" },
+                hh,
+                mm
+            );
 
             println!(
                 "{:>119}",
                 format!(
-                    "Σ Total surplus: {}{:>4} min\x1b[0m",
+                    "Σ Total surplus: {}{:>4}\x1b[0m",
                     color_code, formatted_total
                 ),
             );

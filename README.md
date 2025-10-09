@@ -12,13 +12,26 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in 0.5.1
+## What's new in 0.6.0
 
-- Fixed export parameter binding and implemented proper `--range` support for exports.
-  The export command now accepts CSV and JSON formats and correctly filters by date ranges.
-- Refactored `src/export.rs` to build SQL queries with owned parameters, avoiding lifetime issues and ensuring
-  prepared statements receive the date bounds.
-- Added a comprehensive export test suite and shared test helpers (`tests/common.rs`) to guard against regressions.
+- **New PDF export**  
+  Introduced `PdfManager` module based on `pdf-writer` for generating tabular PDF reports.  
+  Includes bold headers and zebra-striped rows for better readability.  
+  Integrated as a new export format alongside CSV, JSON, and XLSX.
+
+- **New XLSX export**  
+  Introduced `XlsxManager` module using `rust_xlsxwriter`.  
+  Provides Excel-compatible exports with a tabular/graphical layout.  
+  The first row is now frozen as header for easier navigation.
+
+- **Refactored time formatting utilities**  
+  Updated `mins2hhmm()` to support combined ("HH:MM") and split ("HH","MM") formats,  
+  added `mins2readable()` for consistent human-readable durations,  
+  and removed duplicated inline logic with unified helper calls.
+
+- **Improved tests and logic**  
+  Logic and unit tests updated to align with new formatting behavior.  
+  Fixed negative durations formatting and other minor inconsistencies.
 
 ---
 
@@ -268,15 +281,16 @@ rtimelogger backup --file "/path/to/backup.sqlite"
 # With compression
 rtimelogger backup --file "/path/to/backup.sqlite" --compress
 ```
-- On Windows creates /path/to/backup.zip 
+
+- On Windows creates /path/to/backup.zip
 - On Linux/macOS creates /path/to/backup.tar.gz
 
 ---
 
 ### Export data
 
-You can export recorded events or aggregated work sessions to CSV or JSON. The `export` subcommand supports
-date-range filtering with multiple formats and writes to an absolute output path.
+You can export recorded events or aggregated work sessions to **CSV**, **JSON**, **XLSX**, or **PDF**.  
+The `export` subcommand supports date-range filtering with multiple formats and writes to an absolute output path.
 
 Examples:
 
@@ -289,6 +303,12 @@ rtimelogger export --format json --file /absolute/path/sessions.json --sessions 
 
 # Export events for a specific day range using brace syntax
 rtimelogger export --format csv --file /absolute/path/sep28.csv --events --range 2025-02-{28..28}
+
+# Export sessions as XLSX to an absolute path
+rtimelogger export --format xlsx --file /absolute/path/sessions.xlsx --sessions
+
+# Export events as PDF for October 2025
+rtimelogger export --format pdf --file /absolute/path/events.pdf --events --range 2025-10
 ```
 
 Notes:
@@ -296,6 +316,7 @@ Notes:
 - `--range` supports: `YYYY` (whole year), `YYYY-MM` (month), and `YYYY-MM-{dd..dd}` (day range inside a month).
 - The output `--file` must be an absolute path. If the file exists the CLI will prompt for confirmation unless you
   pass `--force` to overwrite without prompting.
+- Supported formats: `csv`, `json`, `xlsx`, `pdf`
 
 ---
 
