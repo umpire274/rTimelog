@@ -1,25 +1,32 @@
 # Changelog
 
-## [0.5.2] - 2025-10-09
+## [0.6.0] - 2025-10-09
+
+Release highlights: brand-new PDF export support and a reworked XLSX export with improved readability.
+
+### Added
+
+- New PDF export feature:
+    - Introduced `PdfManager` module using `pdf-writer` for report generation.
+    - Supports tabular layout with bold headers and zebra stripes for readability.
+    - Integrated in `export.rs` as an alternative export format alongside CSV and JSON.
+- New XLSX export feature:
+    - Added `XlsxManager` module using `rust_xlsxwriter` for Excel-compatible exports.
+    - Introduced tabular/graphical layout for better readability.
+    - First row is now frozen as header.
 
 ### Changed
 
 - Refactored time formatting utilities:
-  - Updated `mins2hhmm()` to support both combined ("HH:MM") and split ("HH","MM") output via an optional parameter.
-  - Added new helper functions `mins2readable()` for consistent human-readable duration formatting (e.g., `07h 45m`).
-  - Replaced duplicated inline conversion logic with unified helper calls.
+    - Updated `mins2hhmm()` to support both combined ("HH:MM") and split ("HH","MM") output via an optional parameter.
+    - Added new helper functions `mins2readable()` for consistent human-readable duration formatting (e.g., `07h 45m`).
+    - Replaced duplicated inline conversion logic with unified helper calls.
 - Updated logic and unit tests to align with the new time formatting behavior.
-- Enhanced XLSX export:
-  - Introduced tabular/graphical layout for better readability.
-  - First row is now frozen as header.
 
 ### Fixed
 
 - Corrected formatting of negative durations to display a single minus sign (e.g., `-01h 25m` instead of `-00h -25m`).
 - Resolved minor inconsistencies in duration calculation and string conversion.
-- Updated XLSX export to align with rust_xlsxwriter v0.90.2 API changes:
-  - Replaced `freeze_panes` with `set_freeze_panes`.
-  - Adjusted column arguments in `write_with_format` and `set_column_width` from `u32` to `u16`.
 
 ---
 
