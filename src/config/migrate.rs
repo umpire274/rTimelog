@@ -1,4 +1,4 @@
-// filepath: x:\Development\workspace\RustProjects\rTimelog\src\config\migrate.rs
+// filepath: x:\Development\workspace\RustProjects\rtimelog\src\config\migrate.rs
 use rusqlite::{Connection, Error, OptionalExtension};
 use serde_yaml::Value;
 use std::fs;
@@ -184,7 +184,7 @@ pub fn run_config_migration(conn: &Connection) -> Result<(), Error> {
 }
 
 pub fn run_fs_migration_with(new_dir: PathBuf, old_dir: PathBuf) -> io::Result<()> {
-    // tutta la logica di run_fs_migration, ma usando i parametri
+    // All the logic of run_fs_migration, but using the provided parameters
     // ----------------------------------------------------------
     if old_dir.exists() && !new_dir.exists() && fs::rename(&old_dir, &new_dir).is_err() {
         fs::create_dir_all(&new_dir)?;
@@ -273,12 +273,12 @@ fn old_config_dir() -> PathBuf {
 pub fn migrate_add_show_weekday(conn: &Connection) -> Result<(), Error> {
     let version = "20251008_0011_add_show_weekday";
 
-    // verifica se già applicata
+    // check if already applied
     let mut chk = conn.prepare(
         "SELECT 1 FROM log WHERE operation = 'migration_applied' AND target = ?1 LIMIT 1",
     )?;
     if chk.query_row([version], |_| Ok(())).optional()?.is_some() {
-        return Ok(()); // già applicata
+        return Ok(()); // already applied
     }
 
     let conf_file = super::Config::config_file();
@@ -296,7 +296,7 @@ pub fn migrate_add_show_weekday(conn: &Connection) -> Result<(), Error> {
             if !map.contains_key(&key) {
                 map.insert(key.clone(), Value::String("None".to_string()));
 
-                // Serializza
+                // Serialize
                 let serialized = serde_yaml::to_string(&yaml).map_err(|e| {
                     Error::SqliteFailure(
                         rusqlite::ffi::Error::new(1),
@@ -304,7 +304,7 @@ pub fn migrate_add_show_weekday(conn: &Connection) -> Result<(), Error> {
                     )
                 })?;
 
-                // Aggiungi commento YAML subito dopo la riga 'show_weekday'
+                // Add YAML comment immediately after the 'show_weekday' line
                 let mut new_content = String::new();
                 for line in serialized.lines() {
                     new_content.push_str(line);

@@ -62,7 +62,7 @@ fn get_headers(export_events: bool) -> Vec<&'static str> {
     }
 }
 
-/// Converte eventi in &[Vec<String>]
+/// Convert events into &[Vec<String>]
 fn events_to_table(events: &[EventExport]) -> Vec<Vec<String>> {
     events
         .iter()
@@ -81,7 +81,7 @@ fn events_to_table(events: &[EventExport]) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// Converte sessioni in &[Vec<String>]
+/// Convert sessions into &[Vec<String>]
 fn sessions_to_table(sessions: &[SessionExport]) -> Vec<Vec<String>> {
     sessions
         .iter()
@@ -126,21 +126,21 @@ pub fn handle_export(cmd: &Commands, conn: &Connection) -> Result<(), Box<dyn Er
         force,
     } = cmd
     {
-        // Verifica formato
+        // Validate format
         let fmt = format.to_lowercase();
         if !["csv", "json", "xlsx", "pdf"].contains(&fmt.as_str()) {
             eprintln!("❌ Unsupported format '{}'. Use one of: csv, json", format);
             std::process::exit(1);
         }
 
-        // Controlla percorso file di output
+        // Check output file path is absolute
         let path = Path::new(file);
         if !path.is_absolute() {
             eprintln!("❌ Output file path must be absolute: {}", file);
             std::process::exit(1);
         }
 
-        // ⬇️ nuovo controllo
+        // new check
         ensure_writable(path, *force)?;
 
         let date_bounds: Option<(String, String)> = if let Some(r) = range.as_deref() {
@@ -149,7 +149,7 @@ pub fn handle_export(cmd: &Commands, conn: &Connection) -> Result<(), Box<dyn Er
             None
         };
 
-        // selezione dataset (default: events)
+        // dataset selection (default: events)
         let export_events = if *events { true } else { !(*sessions) };
 
         if export_events {
@@ -264,9 +264,9 @@ fn ensure_writable(path: &Path, force: bool) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    // Prompt interattivo
+    // Interactive prompt
     eprint!(
-        "⚠️  File '{}' esiste già. Sovrascrivere? [y/N]: ",
+        "⚠️  File '{}' already exists. Overwrite? [y/N]: ",
         path.display()
     );
     io::stderr().flush().ok();
@@ -317,7 +317,7 @@ pub fn export_xlsx<T: Serialize>(data: &[T], path: &Path) -> Result<(), Box<dyn 
         return Ok(());
     }
 
-    // Serializza dinamicamente per ottenere header e valori
+    // Serialize dynamically to obtain headers and values
     let json = serde_json::to_value(data)?;
     let arr = json.as_array().ok_or("invalid data serialization")?;
     let first_obj = arr[0].as_object().ok_or("first row is not an object")?;

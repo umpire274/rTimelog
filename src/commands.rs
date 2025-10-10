@@ -29,10 +29,10 @@ pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
         if *edit_config {
             let path = Config::config_file();
 
-            // Editor richiesto dall'utente (se esiste)
+            // User-requested editor (if provided)
             let requested_editor = editor.clone();
 
-            // Editor di default in base alla piattaforma
+            // Default editor based on the platform
             let default_editor = std::env::var("EDITOR")
                 .or_else(|_| std::env::var("VISUAL"))
                 .unwrap_or_else(|_| {
@@ -43,7 +43,7 @@ pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
                     }
                 });
 
-            // Usa quello richiesto se possibile, altrimenti fallback
+            // Use the requested editor if available, otherwise fall back
             let editor_to_use = requested_editor.unwrap_or_else(|| default_editor.clone());
 
             let status = Command::new(&editor_to_use).arg(&path).status();
@@ -60,7 +60,7 @@ pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
                         "⚠️  Editor '{}' not available, falling back to '{}'",
                         editor_to_use, default_editor
                     );
-                    // Riprova col default
+                    // Retry with the default editor
                     let fallback_status = Command::new(&default_editor).arg(&path).status();
                     match fallback_status {
                         Ok(s) if s.success() => {
@@ -188,7 +188,7 @@ pub fn handle_del(cmd: &Commands, conn: &mut Connection) -> rusqlite::Result<()>
                 Err(e) => eprintln!("❌ Error deleting pair events: {}", e),
             }
         } else {
-            // Cancella TUTTA la giornata
+            // Delete the entire day records
             let ev_n = db::count_events_by_date(conn, date).unwrap_or(0);
             let ws_n = db::count_sessions_by_date(conn, date).unwrap_or(0);
 
@@ -305,7 +305,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 return Ok(());
             }
 
-            // Validazioni base tempi (collapse ifs)
+            // Basic time validations (condensed)
             if let Some(s) = start.as_ref()
                 && NaiveTime::parse_from_str(s, "%H:%M").is_err()
             {
@@ -332,8 +332,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 return Ok(());
             }
 
-            // Creazione eventi mancanti se l'utente prova a completare la coppia
-            // If user provided a start but the 'in' event is missing, create it using the shared helper
+            // Create missing events if the user tries to complete the pair
             if let Some(sv) = start.as_ref()
                 && in_event.is_none()
             {
@@ -363,7 +362,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
                 )?;
             }
 
-            // Applica modifiche sugli eventi esistenti
+            // Apply edits on existing events
             let mut changes: Vec<String> = Vec::new();
 
             if let Some(p) = pos.as_ref() {
@@ -449,7 +448,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         // NORMAL MODE (always create / upsert fields, never implicit edit of existing pair)
         // --------------------------------------------------
 
-        // Applica modifiche sugli eventi esistenti
+        // Apply edits on existing events
         let mut changes: Vec<String> = Vec::new();
 
         // Handle position
@@ -587,7 +586,7 @@ pub fn handle_add(cmd: &Commands, conn: &mut Connection, config: &Config) -> rus
         }
 
         // If the user provided only --pos (no events), keep existing behavior; otherwise aggregate handled above.
-        // Recupera l'id dell'ultima sessione per la data fornita e stampa
+        // Retrieve the id of the last session for the given date and print
         match conn.prepare("SELECT id FROM work_sessions WHERE date = ?1 ORDER BY id DESC LIMIT 1")
         {
             Ok(mut stmt) => match stmt.query_row([date], |row| row.get::<_, i32>(0)) {
@@ -615,7 +614,7 @@ pub struct HandleListArgs {
     pub summary: bool,
 }
 
-/// Compatibile: wrapper che mantiene la firma esistente e chiama la versione con highlight = None
+/// Compatible: wrapper that keeps the existing signature and calls the version with highlight = None
 #[allow(clippy::too_many_arguments)]
 pub fn handle_list(
     args: &HandleListArgs,
@@ -637,7 +636,7 @@ pub fn handle_list(
         if args.events && !args.details {
             let events_today = db::list_events_by_date(conn, &today)?;
             println!(
-                "ℹ️  '--now --events' rilevato: usa '--now --details'. Mostro i dettagli degli eventi di oggi."
+                "ℹ️  '--now --events' detected: use '--now --details'. Showing today's event details."
             );
             if events_today.is_empty() {
                 println!("No events for today.");
@@ -818,9 +817,9 @@ pub fn handle_list(
             println!("No events recorded.");
             return Ok(());
         }
-        // Calcolo pair/unmatched una sola volta
+        // Compute pair/unmatched once
         let enriched = compute_event_pairs(&events_all);
-        // --summary: produci righe aggregate per coppia
+        // --summary: produce aggregated rows per pair
         if args.summary {
             let mut summaries = compute_event_summaries(&enriched);
             if let Some(pf) = args.pairs {
@@ -829,17 +828,18 @@ pub fn handle_list(
             print_events_summary(&summaries, "Event pairs summary");
             return Ok(());
         }
-        // Filtro per pairs se richiesto (modalità dettagliata eventi)
+        // Filter by pairs if requested (detailed events' mode)
         let filtered: Vec<_> = if let Some(pfilter) = args.pairs {
             enriched.into_iter().filter(|e| e.pair == pfilter).collect()
         } else {
             enriched
         };
-        let plain_events: Vec<db::Event> = filtered.iter().map(|ewp| ewp.event.clone()).collect();
-        let pair_map: Vec<(i32, usize, bool)> = filtered
-            .iter()
-            .map(|ewp| (ewp.event.id, ewp.pair, ewp.unmatched))
-            .collect();
+        let mut plain_events: Vec<db::Event> = Vec::with_capacity(filtered.len());
+        let mut pair_map: Vec<(i32, usize, bool)> = Vec::with_capacity(filtered.len());
+        for ewp in &filtered {
+            plain_events.push(ewp.event.clone());
+            pair_map.push((ewp.event.id, ewp.pair, ewp.unmatched));
+        }
         print_events_table_with_pairs(&plain_events, &pair_map, "All events", args.pairs);
         return Ok(());
     }
@@ -847,7 +847,7 @@ pub fn handle_list(
     handle_list_with_highlight(args.period.clone(), args.pos.clone(), conn, config, None)
 }
 
-/// Nuova versione: supporta la stampa con `highlight_id: Option<i32`
+/// New version: supports printing with `highlight_id: Option<i32>`
 pub fn handle_list_with_highlight(
     period: Option<String>,
     pos: Option<String>,
@@ -994,9 +994,9 @@ pub fn handle_list_with_highlight(
                 total_surplus += surplus_minutes;
 
                 let color_code = if surplus_minutes < 0 {
-                    "\x1b[31m"
+                    "\x1b[31m" // red
                 } else if surplus_minutes > 0 {
-                    "\x1b[32m"
+                    "\x1b[32m" // green
                 } else {
                     "\x1b[0m"
                 };
@@ -1083,9 +1083,9 @@ pub fn handle_list_with_highlight(
 
         if total_surplus != 0 {
             let color_code = if total_surplus < 0 {
-                "\x1b[31m" // rosso
+                "\x1b[31m" // red
             } else {
-                "\x1b[32m" // verde
+                "\x1b[32m" // green
             };
 
             let (hh, mm) = utils::mins2readable(total_surplus as i32);
@@ -1159,7 +1159,7 @@ pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result
     fs::copy(src, dest)?;
     println!("✅ Backup created: {}", dest.display());
 
-    // Se compress è attivo → ottieni il nome del file compresso
+    // If compress is active → get the name of the compressed file
     let final_path = if *compress {
         compress_backup(dest)?
     } else {
@@ -1182,7 +1182,7 @@ pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result
     Ok(())
 }
 
-/// Struct di supporto per arricchire l'output JSON e calcoli Pair/unmatched
+/// Support struct to enrich JSON output and compute pair/unmatched
 #[derive(serde::Serialize, Clone)]
 struct EventWithPair {
     #[serde(flatten)]
@@ -1191,11 +1191,12 @@ struct EventWithPair {
     unmatched: bool,
 }
 
-/// Calcola per una slice di Event i pair id (sequenza per data) e il flag unmatched.
-/// Regole:
-///  - Ogni evento 'in' apre una nuova coppia con pair id incrementale (per data) e unmatched=true
-///  - Il primo 'out' successivo chiude la prima coppia aperta (FIFO) e diventa stesso pair, unmatched=false (anche per l'in)
-///  - Un 'out' senza 'in' precedente genera un nuovo pair id con unmatched=true
+/// Compute pair ids (per-date sequence) and unmatched flag for a slice of events.
+/// Rules:
+///  - Every 'in' event opens a new pair with an incremented pair id (per date) and unmatched=true
+///  - The first subsequent 'out' closes the earliest open pair (FIFO) and uses the same pair id,
+///    setting unmatched=false for both the 'in' and the 'out'
+///  - An 'out' without a preceding 'in' creates a new pair id with unmatched=true
 fn compute_event_pairs(events: &[db::Event]) -> Vec<EventWithPair> {
     use std::collections::VecDeque;
     let mut result: Vec<EventWithPair> = Vec::with_capacity(events.len());
@@ -1204,7 +1205,7 @@ fn compute_event_pairs(events: &[db::Event]) -> Vec<EventWithPair> {
     let mut pair_counter: usize = 0;
     for ev in events {
         if ev.date != current_date {
-            // reset per nuova data
+            // reset for a new date
             current_date = ev.date.clone();
             open_in_queue.clear();
             pair_counter = 0;
@@ -1222,14 +1223,14 @@ fn compute_event_pairs(events: &[db::Event]) -> Vec<EventWithPair> {
             "out" => {
                 if let Some(in_idx) = open_in_queue.pop_front() {
                     let pair_id = result[in_idx].pair;
-                    result[in_idx].unmatched = false; // match chiuso
+                    result[in_idx].unmatched = false; // closed match
                     result.push(EventWithPair {
                         event: ev.clone(),
                         pair: pair_id,
                         unmatched: false,
                     });
                 } else {
-                    pair_counter += 1; // out orfano
+                    pair_counter += 1; // orphan out
                     result.push(EventWithPair {
                         event: ev.clone(),
                         pair: pair_counter,
@@ -1317,7 +1318,7 @@ fn compute_event_summaries(enriched: &[EventWithPair]) -> Vec<SummaryRow> {
     for (_, acc) in map.into_iter() {
         let unmatched = (acc.start.is_some() && acc.end.is_none())
             || (acc.start.is_none() && acc.end.is_some());
-        // Calcolo durata
+        // Compute duration
         let mut duration_minutes = 0;
         if let (Some(s), Some(e)) = (acc.start.as_ref(), acc.end.as_ref())
             && let (Ok(st), Ok(et)) = (
@@ -1440,14 +1441,14 @@ fn print_events_table_with_pairs(
     if events.is_empty() {
         return;
     }
-    // costruisce lookup id -> (pair, unmatched)
+    // Build lookup id -> (pair, unmatched)
     use std::collections::HashMap;
-    let mut meta: HashMap<i32, (usize, bool)> = HashMap::new();
+    let mut meta: HashMap<i32, (usize, bool)> = HashMap::with_capacity(pair_map.len());
     for (id, pair, un) in pair_map {
         meta.insert(*id, (*pair, *un));
     }
 
-    // Determina colonne (Pair colonna con possibile suffisso *)
+    // Determine columns (Pair column with possible suffix *)
     let mut w_id = 2usize;
     let mut w_date = 10usize;
     let mut w_time = 5usize;
@@ -1533,13 +1534,14 @@ fn print_events_table_with_pairs(
     }
 }
 
-// Mantiene per retro compatibilità la vecchia funzione ma delega alla nuova con enrich
+// Keep backward-compatible old function but delegate to the new enriched version
 fn print_events_table(events: &[db::Event], title: &str) {
     let enriched = compute_event_pairs(events);
-    let plain: Vec<db::Event> = enriched.iter().map(|e| e.event.clone()).collect();
-    let map: Vec<(i32, usize, bool)> = enriched
-        .iter()
-        .map(|e| (e.event.id, e.pair, e.unmatched))
-        .collect();
+    let mut plain: Vec<db::Event> = Vec::with_capacity(enriched.len());
+    let mut map: Vec<(i32, usize, bool)> = Vec::with_capacity(enriched.len());
+    for e in enriched.iter() {
+        plain.push(e.event.clone());
+        map.push((e.event.id, e.pair, e.unmatched));
+    }
     print_events_table_with_pairs(&plain, &map, title, None);
 }

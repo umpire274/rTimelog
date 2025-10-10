@@ -1,12 +1,12 @@
 use clap::{Parser, Subcommand};
 
-/// Command-line interface definition for rtimelogger
+/// Command-line interface definition for rTimelogger
 /// CLI application to track working hours with SQLite
 #[derive(Parser)]
 #[command(
     name = "rtimelogger",
     version = env!("CARGO_PKG_VERSION"),
-    about = "A simple time logging CLI in Rust: track working hours and calculate surplus using SQLite",
+    about = "A simple time logging CLI: track working hours and calculate surplus using SQLite",
     long_about = None
 )]
 pub struct Cli {
@@ -61,7 +61,7 @@ pub enum Commands {
         /// Date (YYYY-MM-DD)
         date: String,
 
-        /// (Positional)Position: A=office, R=remote
+        /// (Positional) Position: O=office, R=remote, H=holiday, C=On-Site Client
         pos_pos: Option<String>,
         /// (Positional) Start time (HH:MM)
         start_pos: Option<String>,

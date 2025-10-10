@@ -53,9 +53,10 @@ pub fn row_to_worksession(row: &rusqlite::Row) -> Result<WorkSession> {
     let start: Option<String> = row.get("start_time")?;
     let end: Option<String> = row.get("end_time")?;
     let lunch: i32 = row.get::<_, Option<i32>>("lunch_break")?.unwrap_or(0);
+    // Avoid cloning the strings: use as_deref to obtain &str (empty string if None)
     let work_duration = calculate_work_duration(
-        start.clone().unwrap().as_str(),
-        end.clone().unwrap().as_str(),
+        start.as_deref().unwrap_or(""),
+        end.as_deref().unwrap_or(""),
         lunch,
     );
 
@@ -166,19 +167,19 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 pub fn aggregate_position_from_events(conn: &Connection, date: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare_cached("SELECT DISTINCT position FROM events WHERE date = ?1")?;
     let rows = stmt.query_map([date], |row| row.get::<_, String>(0))?;
-    let mut distinct: Vec<String> = Vec::new();
+    use std::collections::HashSet;
+    let mut set: HashSet<String> = HashSet::new();
     for r in rows {
-        distinct.push(r?);
+        set.insert(r?);
+        if set.len() > 1 {
+            return Ok(Some("M".to_string()));
+        }
     }
-    if distinct.is_empty() {
-        return Ok(None);
-    }
-    distinct.sort();
-    distinct.dedup();
-    if distinct.len() == 1 {
-        Ok(Some(distinct[0].clone()))
+    // zero or one distinct positions
+    if let Some(pos) = set.into_iter().next() {
+        Ok(Some(pos))
     } else {
-        Ok(Some("M".to_string()))
+        Ok(None)
     }
 }
 
@@ -224,8 +225,8 @@ pub fn delete_events_by_ids(conn: &Connection, ids: &[i32]) -> Result<usize> {
     sql.push(')');
     let params_vec: Vec<&dyn ToSql> = ids.iter().map(|i| i as &dyn ToSql).collect();
     let mut stmt = conn.prepare_cached(&sql)?;
-    let changed = stmt.execute(rusqlite::params_from_iter(params_vec))?;
-    Ok(changed)
+    stmt.execute(rusqlite::params_from_iter(params_vec))?;
+    Ok(ids.len())
 }
 
 /// Return all saved work sessions, optionally filtered by year or year-month.
@@ -616,11 +617,9 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
             pending_in = Some(e);
         } else if e.kind == "out" {
             if let Some(in_ev) = pending_in.take() {
-                let work_duration = calculate_work_duration(
-                    in_ev.clone().time.as_str(),
-                    e.clone().time.as_str(),
-                    e.lunch_break,
-                );
+                // avoid cloning Event strings; use references
+                let work_duration =
+                    calculate_work_duration(in_ev.time.as_str(), e.time.as_str(), e.lunch_break);
                 // matched pair
                 let ws = WorkSession {
                     id: e.id, // use out event id as session id
@@ -633,8 +632,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
                 };
                 sessions.push(ws);
             } else {
-                let work_duration =
-                    calculate_work_duration("", e.clone().time.as_str(), e.lunch_break);
+                let work_duration = calculate_work_duration("", e.time.as_str(), e.lunch_break);
                 // out without in -> partial session
                 let ws = WorkSession {
                     id: e.id,
@@ -652,7 +650,7 @@ pub fn reconstruct_sessions_from_events(conn: &Connection, date: &str) -> Result
 
     // any remaining pending_in -> incomplete session
     if let Some(in_ev) = pending_in {
-        let work_duration = calculate_work_duration(in_ev.clone().time.as_str(), "", 0);
+        let work_duration = calculate_work_duration(in_ev.time.as_str(), "", 0);
         let ws = WorkSession {
             id: in_ev.id,
             date: date.to_string(),
@@ -768,11 +766,16 @@ pub fn delete_events_by_ids_and_recompute_sessions(
         }
 
         // position: if all remaining events share same position, set it; otherwise leave as-is
-        let mut positions: Vec<String> = remaining.iter().map(|e| e.position.clone()).collect();
-        positions.sort();
-        positions.dedup();
-        if positions.len() == 1 {
-            let pos = &positions[0];
+        // Use a single SQL query to determine if there's exactly one distinct position left.
+        // This pushes the distinct/count work to SQLite and avoids materializing positions in Rust.
+        let mut pos_stmt = tx.prepare(
+            "SELECT COUNT(DISTINCT position) as cnt, MIN(position) as pos FROM events WHERE date = ?1",
+        )?;
+        let (cnt, pos_opt): (i64, Option<String>) =
+            pos_stmt.query_row([date], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        if cnt == 1
+            && let Some(pos) = pos_opt
+        {
             let changed = tx.execute(
                 "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
                 params![pos, date],

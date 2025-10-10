@@ -12,26 +12,12 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ---
 
-## What's new in 0.6.0
+## What's new in 0.6.5
 
-- **New PDF export**  
-  Introduced `PdfManager` module based on `pdf-writer` for generating tabular PDF reports.  
-  Includes bold headers and zebra-striped rows for better readability.  
-  Integrated as a new export format alongside CSV, JSON, and XLSX.
-
-- **New XLSX export**  
-  Introduced `XlsxManager` module using `rust_xlsxwriter`.  
-  Provides Excel-compatible exports with a tabular/graphical layout.  
-  The first row is now frozen as header for easier navigation.
-
-- **Refactored time formatting utilities**  
-  Updated `mins2hhmm()` to support combined ("HH:MM") and split ("HH","MM") formats,  
-  added `mins2readable()` for consistent human-readable durations,  
-  and removed duplicated inline logic with unified helper calls.
-
-- **Improved tests and logic**  
-  Logic and unit tests updated to align with new formatting behavior.  
-  Fixed negative durations formatting and other minor inconsistencies.
+- perf(db): recompute `work_sessions.position` using a single SQLite query (COUNT(DISTINCT position) + MIN(position)) in `delete_events_by_ids_and_recompute_sessions` instead of materializing positions in Rust.
+  - Moves distinct/count work to the DB, reducing allocations and avoiding sorting in Rust.
+  - Semantics preserved: update `position` only when exactly one distinct position remains; otherwise leave unchanged.
+- Added tests (`tests/position_recompute_tests.rs`) covering both the functional case and a repeated-run robustness loop to guard against flakiness.
 
 ---
 
