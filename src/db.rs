@@ -773,18 +773,18 @@ pub fn delete_events_by_ids_and_recompute_sessions(
         )?;
         let (cnt, pos_opt): (i64, Option<String>) =
             pos_stmt.query_row([date], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        if cnt == 1 {
-            if let Some(pos) = pos_opt {
-                let changed = tx.execute(
-                    "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
-                    params![pos, date],
+        if cnt == 1
+            && let Some(pos) = pos_opt
+        {
+            let changed = tx.execute(
+                "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
+                params![pos, date],
+            )?;
+            if changed == 0 {
+                tx.execute(
+                    "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+                    params![date, pos],
                 )?;
-                if changed == 0 {
-                    tx.execute(
-                        "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
-                        params![date, pos],
-                    )?;
-                }
             }
         }
     }
