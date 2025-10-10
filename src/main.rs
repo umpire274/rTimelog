@@ -26,6 +26,8 @@ fn main() -> rusqlite::Result<()> {
 
     // Determine DB path without loading the full config (Config::load may read files under
     // $HOME or %APPDATA% which tests may control); prefer to avoid reading it when --test is set.
+    // Cache a loaded Config when needed to avoid loading it twice later.
+    let mut maybe_loaded_config: Option<Config> = None;
     let db_path = if let Some(custom) = &cli.db {
         let custom_path = std::path::Path::new(custom);
         if custom_path.is_absolute() {
@@ -44,14 +46,16 @@ fn main() -> rusqlite::Result<()> {
             .to_string()
     } else {
         // Production: load the configuration and use the database path from it
-        let config = Config::load();
-        config.database.clone()
+        let cfg = Config::load();
+        let path = cfg.database.clone();
+        maybe_loaded_config = Some(cfg);
+        path
     };
 
     // Now prepare a `config` object for use by commands; when running under --test or when --db is
     // provided we construct a default config (matching Config::load() defaults) and point its
     // `database` to the resolved db_path. Only when neither `--db` nor `--test` are used we call
-    // `Config::load()` to read possible overrides from disk.
+    // `Config::load()` to read possible overrides from disk. If we already loaded it above, reuse it.
     let config = if cli.test || cli.db.is_some() {
         Config {
             database: db_path.clone(),
@@ -63,8 +67,8 @@ fn main() -> rusqlite::Result<()> {
             show_weekday: "None".to_string(),
         }
     } else {
-        // For production, we load the configuration from disk.
-        Config::load()
+        // For production, prefer to reuse an already-loaded Config when available
+        maybe_loaded_config.unwrap_or_else(Config::load)
     };
 
     println!();

@@ -828,17 +828,18 @@ pub fn handle_list(
             print_events_summary(&summaries, "Event pairs summary");
             return Ok(());
         }
-        // Filter by pairs if requested (detailed events mode)
+        // Filter by pairs if requested (detailed events' mode)
         let filtered: Vec<_> = if let Some(pfilter) = args.pairs {
             enriched.into_iter().filter(|e| e.pair == pfilter).collect()
         } else {
             enriched
         };
-        let plain_events: Vec<db::Event> = filtered.iter().map(|ewp| ewp.event.clone()).collect();
-        let pair_map: Vec<(i32, usize, bool)> = filtered
-            .iter()
-            .map(|ewp| (ewp.event.id, ewp.pair, ewp.unmatched))
-            .collect();
+        let mut plain_events: Vec<db::Event> = Vec::with_capacity(filtered.len());
+        let mut pair_map: Vec<(i32, usize, bool)> = Vec::with_capacity(filtered.len());
+        for ewp in &filtered {
+            plain_events.push(ewp.event.clone());
+            pair_map.push((ewp.event.id, ewp.pair, ewp.unmatched));
+        }
         print_events_table_with_pairs(&plain_events, &pair_map, "All events", args.pairs);
         return Ok(());
     }
@@ -1442,7 +1443,7 @@ fn print_events_table_with_pairs(
     }
     // Build lookup id -> (pair, unmatched)
     use std::collections::HashMap;
-    let mut meta: HashMap<i32, (usize, bool)> = HashMap::new();
+    let mut meta: HashMap<i32, (usize, bool)> = HashMap::with_capacity(pair_map.len());
     for (id, pair, un) in pair_map {
         meta.insert(*id, (*pair, *un));
     }
@@ -1536,10 +1537,11 @@ fn print_events_table_with_pairs(
 // Keep backward-compatible old function but delegate to the new enriched version
 fn print_events_table(events: &[db::Event], title: &str) {
     let enriched = compute_event_pairs(events);
-    let plain: Vec<db::Event> = enriched.iter().map(|e| e.event.clone()).collect();
-    let map: Vec<(i32, usize, bool)> = enriched
-        .iter()
-        .map(|e| (e.event.id, e.pair, e.unmatched))
-        .collect();
+    let mut plain: Vec<db::Event> = Vec::with_capacity(enriched.len());
+    let mut map: Vec<(i32, usize, bool)> = Vec::with_capacity(enriched.len());
+    for e in enriched.iter() {
+        plain.push(e.event.clone());
+        map.push((e.event.id, e.pair, e.unmatched));
+    }
     print_events_table_with_pairs(&plain, &map, title, None);
 }
