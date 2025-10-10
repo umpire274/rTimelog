@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.6.5] - 2025-10-10
+
+### Added
+
+- tests: `tests/position_recompute_tests.rs` with:
+    - functional coverage for single-position recompute (ensures `position` and `end_time` are correct after deleting
+      pairs),
+    - robustness loop (multiple independent runs) to catch potential flakiness related to test harness/FS state.
+
+### Changed
+
+- perf(db): recompute `work_sessions.position` using a single SQLite query (COUNT(DISTINCT position), MIN(position)) in
+  `delete_events_by_ids_and_recompute_sessions` instead of materializing positions in Rust.
+    - Moves distinct/count work to SQLite, avoids extra allocations and sorting, and provides an early-exit cheap path
+      for mixed positions.
+    - Preserves existing semantics: update `position` only when exactly one distinct position remains; otherwise leave
+      unchanged.
+
+### Fixed / Misc
+
+- chore(main): removed redundant closure in `src/main.rs` (`unwrap_or_else(Config::load)` ->
+  `unwrap_or_else(Config::load)`).
+- All tests pass locally (`cargo test` ran successfully after changes).
+
+---
+
 ## [0.6.0] - 2025-10-09
 
 Release highlights: brand-new PDF export support and a reworked XLSX export with improved readability.
