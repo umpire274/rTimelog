@@ -9,22 +9,23 @@ use std::fs;
 pub struct Migration {
     pub version: &'static str,
     pub description: &'static str,
-    pub up: fn(&Connection) -> Result<()>, // ✅ giusto
+    pub up: fn(&Connection) -> Result<()>, // migration function
 }
 
-/// Aggiorna la tabella `log` legacy (con colonna `function`) al nuovo schema con `operation` e `target`.
+/// Upgrade the legacy `log` table (that used a `function` column) to the
+/// new schema using `operation` and `target` columns.
 fn upgrade_legacy_log_schema(conn: &Connection) -> Result<()> {
-    // Verifica se esiste la tabella log
+    // Check whether the log table exists
     let mut exists_stmt =
         conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='log'")?;
     let exists = exists_stmt
         .query_row([], |row| row.get::<_, String>(0))
         .optional()?;
     if exists.is_none() {
-        return Ok(()); // nulla da aggiornare
+        return Ok(()); // nothing to upgrade
     }
 
-    // Ispeziona le colonne
+    // Inspect columns
     let mut col_stmt = conn.prepare("PRAGMA table_info('log')")?;
     let cols_iter = col_stmt.query_map([], |row| {
         Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?))
@@ -42,9 +43,9 @@ fn upgrade_legacy_log_schema(conn: &Connection) -> Result<()> {
         }
     }
 
-    // Caso 1: vecchio schema (ha function e non ha operation) -> ricostruzione tabella
+    // Case 1: old schema (has function and no operation) -> rebuild table
     if has_function && !has_operation {
-        // Rinomina e ricrea
+        // Rename and recreate
         conn.execute_batch(
             r#"
             ALTER TABLE log RENAME TO log_old;
@@ -64,7 +65,7 @@ fn upgrade_legacy_log_schema(conn: &Connection) -> Result<()> {
         return Ok(());
     }
 
-    // Caso 2: tabella già ha operation ma manca target -> aggiungo colonna
+    // Case 2: table has operation but lacks target -> add target column
     if has_operation && !has_target {
         conn.execute("ALTER TABLE log ADD COLUMN target TEXT DEFAULT ''", [])?;
         println!("🔄 Added missing 'target' column to log table.");
@@ -85,16 +86,16 @@ fn query_pairs(stmt: &mut rusqlite::Statement<'_>) -> Result<Vec<(String, String
     Ok(result)
 }
 
-/// Assicurati che esista la tabella che traccia le migrazioni applicate
+/// Ensure the table used to track applied migrations exists.
 fn ensure_migrations_table(conn: &Connection) -> Result<(), Error> {
-    // Prima prova ad aggiornare eventuale schema legacy della tabella log
+    // First attempt to upgrade any legacy log table schema
     upgrade_legacy_log_schema(conn).map_err(|e| {
         Error::SqliteFailure(
             ffi::Error::new(1),
             Some(format!("Failed to upgrade legacy log table: {}", e)),
         )
     })?;
-    // Con la nuova strategia usiamo la tabella `log` per tracciare le migrazioni
+    // With the new strategy we use the `log` table to track migrations
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS log (
@@ -108,7 +109,7 @@ fn ensure_migrations_table(conn: &Connection) -> Result<(), Error> {
     )
 }
 
-/// Leggi le versioni già applicate
+/// Read already-applied migration versions
 fn applied_versions(conn: &Connection) -> Result<HashSet<String>, Error> {
     let mut set = HashSet::new();
 
@@ -201,7 +202,7 @@ fn applied_versions(conn: &Connection) -> Result<HashSet<String>, Error> {
     Ok(set)
 }
 
-/// Segna come applicata una migrazione (solo dopo successo)
+/// Mark a migration as applied (only after success)
 fn mark_applied(conn: &Connection, version: &str) -> Result<(), Error> {
     // Instead of writing into a dedicated schema_migrations table, insert a marker into `log`.
     conn.execute(
@@ -216,26 +217,26 @@ fn mark_applied(conn: &Connection, version: &str) -> Result<(), Error> {
     Ok(())
 }
 
-/// Esegui solo le migrazioni non ancora applicate
+/// Execute only migrations that are not yet applied
 static ALL_MIGRATIONS: &[Migration] = &[
     Migration {
-        version: "20250919_0001_create_log_table_and_position_H",
-        description: "Create 'log' table and extend position to include 'H'",
+        version: "20250915_0001_create_log_table",
+        description: "Create log table to track operations and migrations",
         up: migrate_to_030_rel,
     },
     Migration {
-        version: "20250919_0002_position_add_C",
-        description: "Extend position CHECK to include 'C'",
+        version: "20250920_0002_add_C_position_to_work_sessions",
+        description: "Add 'C' (On-Site) to position CHECK in work_sessions table",
         up: migrate_to_032_rel,
     },
     Migration {
-        version: "20250919_0003_upgrade_config_file",
-        description: "Add into config file two new parameters: min_duration_lunch_break=30 e max_duration_lunch_break=90",
+        version: "20250919_0003_add_lunch_break_to_config",
+        description: "Add min_duration_lunch_break and max_duration_lunch_break to config file if missing",
         up: migrate_to_033_rel,
     },
     Migration {
-        version: "20250930_0004_add_work_sessions_indexes",
-        description: "Add indexes on work_sessions.date and work_sessions.position",
+        version: "20250925_0004_add_indexes_to_work_sessions",
+        description: "Add indexes to work_sessions on date and position for faster queries",
         up: migrate_to_034_rel,
     },
     Migration {
@@ -258,13 +259,11 @@ static ALL_MIGRATIONS: &[Migration] = &[
         description: "Extend position CHECK to include 'M' (Mixed) and migrate existing tables if necessary",
         up: migrate_to_038_add_m,
     },
-    // Prima migrazione: unifica schema_migrations dentro log e rimuove la tabella legacy
     Migration {
         version: "20251030_0009_unify_schema_migrations_into_log",
         description: "Import schema_migrations rows into the unified log table and drop schema_migrations",
         up: migrate_to_unify_schema_migrations,
     },
-    // Config rename migration: rtimelog -> rtimelogger
     Migration {
         version: "20251006_0010_rename_rtimelog_to_rtimelogger",
         description: "Rename configuration directory/file and DB from 'rtimelog' to 'rtimelogger'",
@@ -309,9 +308,9 @@ pub fn run_pending_migrations(conn: &Connection) -> Result<(), Error> {
     let applied = applied_versions(conn)?;
     for m in ALL_MIGRATIONS {
         if !applied.contains(m.version) {
-            // Applica la migrazione
+            // Apply the migration
             (m.up)(conn)?;
-            // Marca come applicata
+            // Mark as applied
             mark_applied(conn, m.version)?;
             println!("✅ Migration applied: {} — {}", m.version, m.description);
         }
@@ -427,7 +426,7 @@ pub fn migrate_to_033_rel(conn: &Connection) -> Result<(), Error> {
 
     let content = fs::read_to_string(&path).map_err(|e| {
         Error::SqliteFailure(
-            ffi::Error::new(1), // codice "Unknown error"
+            ffi::Error::new(1), // code "Unknown error"
             Some(format!("Failed to read config: {}", e)),
         )
     })?;

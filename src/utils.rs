@@ -10,7 +10,7 @@ pub fn date2iso(date: &NaiveDate) -> String {
 /// Convert an ISO 8601 string (YYYY-MM-DD) into a `NaiveDate` (strict check)
 pub fn iso2date(s: &str) -> Result<NaiveDate, ParseError> {
     let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")?;
-    // round-trip check: deve coincidere esattamente con l’input
+    // round-trip check: must exactly match the input
     if date2iso(&date) == s {
         Ok(date)
     } else {
@@ -34,10 +34,10 @@ pub fn iso2datetime(s: &str) -> Result<NaiveDateTime, ParseError> {
     }
 }
 
-/// Returns the day of the week in various formats...
-/// - `type_wd = 's'` → short, es. "Mo"
-/// - `type_wd = 'm'` → medium, es. "Mon"
-/// - `type_wd = 'l'` → long, es. "Monday"
+/// Returns the day of the week in various formats.
+/// - `type_wd = 's'` → short, e.g. "Mo"
+/// - `type_wd = 'm'` → medium, e.g. "Mon"
+/// - `type_wd = 'l'` → long, e.g. "Monday"
 pub fn weekday_str(date_str: &str, type_wd: char) -> String {
     if let Ok(ndate) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
         let wd = ndate.weekday();
@@ -75,16 +75,16 @@ pub fn weekday_str(date_str: &str, type_wd: char) -> String {
             .to_string(),
         }
     } else {
-        String::new() // se la data non è valida, restituisce stringa vuota
+        String::new() // if the date is invalid, return an empty string
     }
 }
 pub fn parse_work_duration_to_minutes(s: &str) -> i64 {
-    // Accetta: "8h", "7h 36m", "7h36m", "  6h   15m ", "45m"
+    // Accepts: "8h", "7h 36m", "7h36m", "  6h   15m ", "45m"
     let cleaned = s.trim().to_lowercase();
     let mut hours: i64 = 0;
     let mut minutes: i64 = 0;
 
-    // parsing senza regex: numero seguito da 'h' o 'm'
+    // parsing without regex: number followed by 'h' or 'm'
     let mut num = String::new();
     for ch in cleaned.chars() {
         if ch.is_ascii_digit() {
@@ -100,7 +100,7 @@ pub fn parse_work_duration_to_minutes(s: &str) -> i64 {
             }
             num.clear();
         } else {
-            // separatore: scarta numeri orfani
+            // separator: discard orphan numbers
             if !num.is_empty() {
                 num.clear();
             }
@@ -118,10 +118,10 @@ pub fn mins2hhmm(minutes: i32, splitted: Option<bool>) -> Result<String, (String
     let mins = minutes % 60;
 
     if splitted {
-        // ritorna tuple (HH, MM) come Err per distinguere
+        // return tuple (HH, MM) as Err to distinguish
         Err((format!("{:02}", hours), format!("{:02}", mins)))
     } else {
-        // ritorna stringa "HH:MM"
+        // return string "HH:MM"
         Ok(format!("{:02}:{:02}", hours, mins))
     }
 }
@@ -183,7 +183,7 @@ pub fn describe_position(pos: &str) -> (String, String) {
         }
         _ => {
             let label = pos.to_string();
-            (label.clone(), "\x1b[0m".to_string()) // fallback senza colore
+            (label.clone(), "\x1b[0m".to_string()) // fallback without color
         }
     }
 }

@@ -3,23 +3,23 @@ use crate::db;
 use crate::db::row_to_event;
 use rusqlite::{Connection, params};
 
-/// Crea un evento mancante (in/out) e restituisce l'evento creato.
-/// Se un evento identico (stessa data/time/kind) esiste già, lo restituisce senza duplicare.
-/// `pos_opt` può forzare la position (altrimenti usa il default da `config`).
-/// `prefer_other` è attualmente ignorato (placeholder per logiche future di fusione/accoppiamento).
+/// Create a missing event (in/out) and return the created event.
+/// If an identical event (same date/time/kind) already exists, return it without duplicating.
+/// `pos_opt` may force the position (otherwise uses the default from `config`).
+/// `_prefer_other` is currently ignored (placeholder for future merge/matching logic).
 pub fn create_missing_event(
     conn: &mut Connection,
     date: &str,
     time_val: &str,
     kind_val: &str,           // "in" | "out"
-    pos_opt: &Option<String>, // Some("R") ecc. oppure None
+    pos_opt: &Option<String>, // Some("R") etc. or None
     _prefer_other: Option<&db::Event>,
     config: &Config,
 ) -> rusqlite::Result<Option<db::Event>> {
-    // Normalizza/valida i parametri minimi
+    // Normalize/validate minimal parameters
     let kind = kind_val.trim().to_lowercase();
     if kind != "in" && kind != "out" {
-        // kind non valido → nessun inserimento
+        // invalid kind -> no insertion
         return Ok(None);
     }
 
@@ -30,14 +30,14 @@ pub fn create_missing_event(
         .trim()
         .to_string();
 
-    // 1) Verifica se esiste già un evento identico (stessa data, stessa ora, stesso kind)
+    // 1) Check whether an identical event already exists (same date, same time, same kind)
     if let Some(existing) = get_event_by_uniq(conn, date, time_val, &kind)? {
         return Ok(Some(existing));
     }
 
-    // 2) Inserisci l'evento mancante.
-    //    Nota: pair viene lasciato a 0 (DEFAULT) e potrà essere ricalcolato a valle (migrazione/repair).
-    //    created_at viene impostato via SQLite per evitare dipendenze lato Rust.
+    // 2) Insert the missing event.
+    //    Note: pair is left at 0 (DEFAULT) and can be recalculated later (migration/repair).
+    //    created_at is set via SQLite to avoid extra dependencies in Rust.
     conn.execute(
         r#"
         INSERT INTO events (date, time, kind, position, lunch_break, pair, source, meta, created_at)
@@ -46,13 +46,13 @@ pub fn create_missing_event(
         params![date, time_val, kind, position],
     )?;
 
-    // 3) Recupera l'evento appena creato e restituiscilo.
+    // 3) Retrieve the newly created event and return it.
     let new_id: i64 = conn.query_row("SELECT last_insert_rowid()", [], |r| r.get(0))?;
     let inserted = get_event_by_id(conn, new_id)?;
     Ok(Some(inserted))
 }
 
-/// Restituisce un evento per ID (mapping per nome colonna, robusto all'ordine delle colonne).
+/// Return an event by ID (column-name based mapping, robust to column order changes).
 fn get_event_by_id(conn: &Connection, id: i64) -> rusqlite::Result<db::Event> {
     conn.query_row(
         r#"
@@ -65,7 +65,7 @@ fn get_event_by_id(conn: &Connection, id: i64) -> rusqlite::Result<db::Event> {
     )
 }
 
-/// Cerca un evento "unico" per (date, time, kind).
+/// Find a unique event by (date, time, kind).
 fn get_event_by_uniq(
     conn: &Connection,
     date: &str,
@@ -97,8 +97,8 @@ mod tests {
     use crate::db;
     use rusqlite::Connection;
 
-    /// Verifica che la creazione dell'evento mancante "in" su DB in-memory funzioni
-    /// e restituisca un Event coerente con i dati attesi.
+    /// Verify that creating a missing 'in' event on an in-memory DB works
+    /// and returns an Event consistent with the provided data.
     #[test]
     fn test_create_missing_event_in_memory() {
         // prepare in-memory DB and config
