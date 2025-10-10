@@ -766,29 +766,25 @@ pub fn delete_events_by_ids_and_recompute_sessions(
         }
 
         // position: if all remaining events share same position, set it; otherwise leave as-is
-        // Use a HashSet<&str> to detect distinct positions without sorting or multiple allocations.
-        // We insert &str slices that borrow from `remaining` entries (which live for this scope).
-        use std::collections::HashSet;
-        let mut positions: HashSet<&str> = HashSet::with_capacity(remaining.len());
-        for e in &remaining {
-            positions.insert(e.position.as_str());
-            // early exit: once we have more than one distinct position we can stop
-            if positions.len() > 1 {
-                break;
-            }
-        }
-        if positions.len() == 1 {
-            // Safe to unwrap: exactly one distinct position
-            let pos = *positions.iter().next().unwrap();
-            let changed = tx.execute(
-                "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
-                params![pos, date],
-            )?;
-            if changed == 0 {
-                tx.execute(
-                    "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
-                    params![date, pos],
+        // Use a single SQL query to determine if there's exactly one distinct position left.
+        // This pushes the distinct/count work to SQLite and avoids materializing positions in Rust.
+        let mut pos_stmt = tx.prepare(
+            "SELECT COUNT(DISTINCT position) as cnt, MIN(position) as pos FROM events WHERE date = ?1",
+        )?;
+        let (cnt, pos_opt): (i64, Option<String>) =
+            pos_stmt.query_row([date], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        if cnt == 1 {
+            if let Some(pos) = pos_opt {
+                let changed = tx.execute(
+                    "UPDATE work_sessions SET position = ?1 WHERE date = ?2",
+                    params![pos, date],
                 )?;
+                if changed == 0 {
+                    tx.execute(
+                        "INSERT INTO work_sessions (date, position) VALUES (?1, ?2)",
+                        params![date, pos],
+                    )?;
+                }
             }
         }
     }
