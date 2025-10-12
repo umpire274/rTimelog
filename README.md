@@ -78,7 +78,7 @@ paru -S rtimelogger
 [![Homebrew](https://img.shields.io/badge/Homebrew-rTimelogger-orange.svg?logo=homebrew)](https://github.com/umpire274/homebrew-tap)
 
 ```bash
-brew tap umpire274/rtimelogger
+brew tap umpire274/tap
 brew install rtimelogger
 ```
 
