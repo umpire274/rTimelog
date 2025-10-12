@@ -75,7 +75,7 @@ paru -S rtimelogger
 
 ### 🍺 Homebrew (macOS/Linux)
 
-[![Homebrew Tap](https://img.shields.io/badge/homebrew-tap-brightgreen)](https://github.com/umpire274/homebrew-rtimelogger)
+[![Homebrew](https://img.shields.io/badge/Homebrew-rTimelogger-orange.svg?logo=homebrew)](https://github.com/umpire274/homebrew-tap)
 
 ```bash
 brew tap umpire274/rtimelogger
