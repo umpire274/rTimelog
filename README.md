@@ -14,10 +14,12 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ## What's new in 0.6.5
 
-- perf(db): recompute `work_sessions.position` using a single SQLite query (COUNT(DISTINCT position) + MIN(position)) in `delete_events_by_ids_and_recompute_sessions` instead of materializing positions in Rust.
-  - Moves distinct/count work to the DB, reducing allocations and avoiding sorting in Rust.
-  - Semantics preserved: update `position` only when exactly one distinct position remains; otherwise leave unchanged.
-- Added tests (`tests/position_recompute_tests.rs`) covering both the functional case and a repeated-run robustness loop to guard against flakiness.
+- perf(db): recompute `work_sessions.position` using a single SQLite query (COUNT(DISTINCT position) + MIN(position)) in
+  `delete_events_by_ids_and_recompute_sessions` instead of materializing positions in Rust.
+    - Moves distinct/count work to the DB, reducing allocations and avoiding sorting in Rust.
+    - Semantics preserved: update `position` only when exactly one distinct position remains; otherwise leave unchanged.
+- Added tests (`tests/position_recompute_tests.rs`) covering both the functional case and a repeated-run robustness loop
+  to guard against flakiness.
 
 ---
 
@@ -271,7 +273,9 @@ rtimelogger backup --file "/path/to/backup.sqlite" --compress
 
 Notes:
 
-- When `--compress` is provided, the CLI now removes the original uncompressed backup file after successful compression (e.g. `my_db.sqlite.bck` -> `my_db.sqlite.zip`); a non-fatal warning is printed if the removal fails. This avoids leaving redundant files in the backup directory.
+- When `--compress` is provided, the CLI now removes the original uncompressed backup file after successful
+  compression (e.g. `my_db.sqlite.bck` -> `my_db.sqlite.zip`); a non-fatal warning is printed if the removal fails. This
+  avoids leaving redundant files in the backup directory.
 
 ---
 

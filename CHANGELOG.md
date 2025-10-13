@@ -4,15 +4,18 @@
 
 ### Changed
 
-- cli: rename top-level subcommand `conf` → `config` (and variant `Commands::Conf` → `Commands::Config`) to harmonize CLI naming across projects.
-  - Subcommands remain the same: `--print`, `--edit`, `--editor`.
-  - Handler function renamed from `handle_conf` to `handle_config` and corresponding call sites updated.
-  - Note: this is a breaking CLI name change (users must call `rtimelogger config ...`). Consider adding a backwards-compat shim in a follow-up if desired.
+- cli: rename top-level subcommand `conf` → `config` (and variant `Commands::Conf` → `Commands::Config`) to harmonize
+  CLI naming across projects.
+    - Subcommands remain the same: `--print`, `--edit`, `--editor`.
+    - Handler function renamed from `handle_conf` to `handle_config` and corresponding call sites updated.
+    - Note: this is a breaking CLI name change (users must call `rtimelogger config ...`). Consider adding a
+      backwards-compat shim in a follow-up if desired.
 
 ### Fixed / Misc
 
 - backup: when `--compress` is provided, the original uncompressed backup file (e.g. `my_db.sqlite.bck`) is now removed
-  after successful compression (e.g. `my_db.sqlite.zip` or `my_db.sqlite.tar.gz`) to avoid leaving redundant files on disk; a
+  after successful compression (e.g. `my_db.sqlite.zip` or `my_db.sqlite.tar.gz`) to avoid leaving redundant files on
+  disk; a
   non-fatal warning is emitted if removal fails.
 
 ---

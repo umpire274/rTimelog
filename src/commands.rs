@@ -1168,9 +1168,16 @@ pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result
         // removal fails — just emit a warning.
         if compressed != dest.to_path_buf() {
             if let Err(e) = fs::remove_file(dest) {
-                eprintln!("���️ Failed to delete original backup file {}: {}", dest.display(), e);
+                eprintln!(
+                    "���️ Failed to delete original backup file {}: {}",
+                    dest.display(),
+                    e
+                );
             } else {
-                println!("🗑️ Original uncompressed backup deleted: {}", dest.display());
+                println!(
+                    "🗑️ Original uncompressed backup deleted: {}",
+                    dest.display()
+                );
             }
         }
         compressed
