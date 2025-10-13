@@ -28,7 +28,7 @@ pub enum Commands {
     Init,
 
     /// Manage the configuration file (view or edit)
-    Conf {
+    Config {
         /// Print the current configuration file to stdout
         #[arg(long = "print", help = "Print the current configuration file")]
         print_config: bool,

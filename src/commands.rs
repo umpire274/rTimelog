@@ -13,8 +13,8 @@ use std::path::Path;
 use std::process::Command;
 use std::{fs, io};
 
-pub fn handle_conf(cmd: &Commands) -> rusqlite::Result<()> {
-    if let Commands::Conf {
+pub fn handle_config(cmd: &Commands) -> rusqlite::Result<()> {
+    if let Commands::Config {
         print_config,
         edit_config,
         editor,
@@ -1161,7 +1161,26 @@ pub fn handle_backup(config: &Config, file: &str, compress: &bool) -> io::Result
 
     // If compress is active → get the name of the compressed file
     let final_path = if *compress {
-        compress_backup(dest)?
+        // Compress the just-created backup file. If compression succeeds, remove the
+        // original (uncompressed) backup file because it's no longer needed.
+        let compressed = compress_backup(dest)?;
+        // Try to remove the original backup file; do not fail the whole operation if
+        // removal fails — just emit a warning.
+        if compressed != dest.to_path_buf() {
+            if let Err(e) = fs::remove_file(dest) {
+                eprintln!(
+                    "���️ Failed to delete original backup file {}: {}",
+                    dest.display(),
+                    e
+                );
+            } else {
+                println!(
+                    "🗑️ Original uncompressed backup deleted: {}",
+                    dest.display()
+                );
+            }
+        }
+        compressed
     } else {
         dest.to_path_buf()
     };
