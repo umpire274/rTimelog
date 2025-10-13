@@ -61,8 +61,6 @@ The tool calculates the expected exit time and the surplus of worked minutes.
 
 ## 📦 Installation
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/rtimelogger.svg)](https://repology.org/project/rtimelogger/versions)
-
 ### 🐧 AUR (Arch Linux)
 
 [![AUR](https://img.shields.io/aur/version/rtimelogger)](https://aur.archlinux.org/packages/rtimelogger)
@@ -271,6 +269,10 @@ rtimelogger backup --file "/path/to/backup.sqlite" --compress
 - On Windows creates /path/to/backup.zip
 - On Linux/macOS creates /path/to/backup.tar.gz
 
+Notes:
+
+- When `--compress` is provided, the CLI now removes the original uncompressed backup file after successful compression (e.g. `my_db.sqlite.bck` -> `my_db.sqlite.zip`); a non-fatal warning is printed if the removal fails. This avoids leaving redundant files in the backup directory.
+
 ---
 
 ### Export data
@@ -306,7 +308,7 @@ Notes:
 
 ---
 
-## Event mode – behavior details
+### Event mode – behavior details
 
 - **Pair numbering** restarts each date.
 - **Unmatched** rows (only `in` or only `out`) show `*` and `duration_minutes = 0` in summary.
